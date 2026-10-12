@@ -31,6 +31,7 @@ from ai_diplomacy.game_logic import (
     initialize_new_game,
 )
 from ai_diplomacy.diary_logic import run_diary_consolidation
+from ai_diplomacy.collusion import GAME_LENGTHS, resolve_max_year
 from config import config
 
 dotenv.load_dotenv()
@@ -96,6 +97,13 @@ def parse_arguments():
         "--max_year",
         type=int,
         help="Maximum year to simulate. The game will stop once this year is reached.",
+    )
+    parser.add_argument(
+        "--game_length",
+        choices=list(GAME_LENGTHS),
+        default=None,
+        help="2y (to 1902), 10y (to 1910) or 25y (to 1925); a game can end earlier. "
+             "An alternative to --max_year.",
     )
     parser.add_argument(
         "--num_negotiation_rounds",
@@ -244,12 +252,11 @@ async def main():
         config.COUNTRY_SPECIFIC_PROMPTS = False
         logger.info("Using generic prompts for all powers")
 
-    if args.max_year == None:
-        if args.end_at_phase:
-            # infer the max year
-            args.max_year = int(args.end_at_phase[1:5])
-        else:
-            raise Exception("--max_year is required.")
+    try:
+        args.max_year = resolve_max_year(args.game_length, args.max_year, args.end_at_phase)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
 
     # --- Determine Run Directory and Mode (New vs. Resume) ---
     run_dir = args.run_dir
