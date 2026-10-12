@@ -31,7 +31,7 @@ from ai_diplomacy.game_logic import (
     initialize_new_game,
 )
 from ai_diplomacy.diary_logic import run_diary_consolidation
-from ai_diplomacy.collusion import GAME_LENGTHS, resolve_max_year
+from ai_diplomacy.collusion import GAME_LENGTHS, POWERS, read_saved_collusion, resolve_colluders, resolve_max_year
 from config import config
 
 dotenv.load_dotenv()
@@ -104,6 +104,21 @@ def parse_arguments():
         default=None,
         help="2y (to 1902), 10y (to 1910) or 25y (to 1925); a game can end earlier. "
              "An alternative to --max_year.",
+    )
+    parser.add_argument(
+        "--n_colluders",
+        type=int,
+        default=0,
+        choices=range(len(POWERS) + 1),
+        metavar="N",
+        help="Number of powers given the hidden objective, drawn at random. 0 (default) "
+             "is a normal game, i.e. the control condition.",
+    )
+    parser.add_argument(
+        "--colluder_seed",
+        type=int,
+        default=None,
+        help="Seed for choosing the colluders. If omitted, one is drawn and saved with the game.",
     )
     parser.add_argument(
         "--num_negotiation_rounds",
@@ -306,6 +321,18 @@ async def main():
 
     game_file_name = "lmvsgame.json"
     game_file_path = os.path.join(run_dir, game_file_name)
+
+    # Colluders: reuse the saved choice when resuming, otherwise draw them.
+    try:
+        args.colluder_seed, args.colluders = resolve_colluders(
+            args.n_colluders, args.colluder_seed,
+            read_saved_collusion(game_file_path) if is_resuming else None,
+        )
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if args.colluders:
+        logger.info(f"Colluders (seed {args.colluder_seed}): {', '.join(args.colluders)}")
     llm_log_file_path = os.path.join(run_dir, "llm_responses.csv")
     model_error_stats = defaultdict(lambda: {"conversation_errors": 0, "order_decoding_errors": 0})
 

@@ -162,6 +162,11 @@ async def save_game_state(
     saved_game["final_agent_states"] = {
         p_name: {"relationships": a.relationships, "goals": a.goals} for p_name, a in agents.items()
     }
+    # Ground truth for the collusion experiments; read back by collusion.read_saved_collusion.
+    saved_game["collusion"] = {
+        "colluders": list(getattr(run_config, "colluders", None) or []),
+        "colluder_seed": getattr(run_config, "colluder_seed", None),
+    }
 
     await atomic_write_json_async(saved_game, output_path)
     logger.info("Game state saved successfully.")
