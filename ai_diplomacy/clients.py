@@ -1,4 +1,5 @@
 import os
+import time  # LOCAL PATCH: usage log timestamps
 import json
 import re
 import logging
@@ -1175,21 +1176,47 @@ class OpenRouterClient(BaseModelClient):
     async def generate_response(self, prompt: str, temperature: float = 0.0, inject_random_seed: bool = True) -> str:
         """Generate a response using OpenRouter with robust error handling."""
         try:
+            # LOCAL PATCH (prompt caching): the random seed used to be prepended to the system
+            # prompt, which made every request's prefix unique and defeated prefix caching. It now
+            # goes at the end of the user message, just before the call to action.
+            system_prompt_content = self.system_prompt
+            if inject_random_seed:
+                prompt = f"{prompt}\n\n{generate_random_seed()}"
+
             # Append the call to action to the user's prompt
             prompt_with_cta = prompt + "\n\nPROVIDE YOUR RESPONSE BELOW:"
 
-            system_prompt_content = self.system_prompt
-            if inject_random_seed:
-                random_seed = generate_random_seed()
-                system_prompt_content = f"{random_seed}\n\n{self.system_prompt}"
+            # LOCAL PATCH (prompt caching): on OpenRouter, Luna only reads the cache when a prefix
+            # ending at a message/content-part boundary matches. Negotiation prompts are identical
+            # across a phase's rounds up to "Messages This Round", so split there and mark the stable
+            # part as a cache breakpoint. The concatenated text the model sees is unchanged.
+            user_content = prompt_with_cta
+            split_at = prompt_with_cta.find("Messages This Round")
+            if split_at > 0:
+                user_content = [
+                    {"type": "text", "text": prompt_with_cta[:split_at], "cache_control": {"type": "ephemeral"}},
+                    {"type": "text", "text": prompt_with_cta[split_at:]},
+                ]
 
             # Prepare standard OpenAI-compatible request
+            # LOCAL PATCH (cost comparison): reasoning effort from env, temperature left at provider
+            # default (matching CoordinationGames' temperature: null), usage+cost appended to a JSONL.
+            extra_body = {"usage": {"include": True}}
+            effort = os.environ.get("OPENROUTER_REASONING_EFFORT")
+            if effort:
+                extra_body["reasoning_effort"] = effort  # same field CoordinationGames sends (model.py)
             response = await self.client.chat.completions.create(
                 model=self.model_name,
-                messages=[{"role": "system", "content": system_prompt_content}, {"role": "user", "content": prompt_with_cta}],
+                messages=[{"role": "system", "content": system_prompt_content}, {"role": "user", "content": user_content}],
                 max_tokens=self.max_tokens,
-                temperature=temperature,
+                extra_body=extra_body,
             )
+            usage_log = os.environ.get("OPENROUTER_USAGE_LOG")
+            if usage_log and response.usage is not None:
+                with open(usage_log, "a") as f:
+                    f.write(json.dumps({"t": time.time(), "model": self.model_name, "power": getattr(self, "power_name", None),
+                                        "finish_reason": response.choices[0].finish_reason if response.choices else None,
+                                        "usage": response.usage.model_dump()}) + "\n")
 
             if not response.choices or not response.choices[0].message.content:
                 raise ValueError(f"[{self.model_name}] LLM returned an empty or invalid response.")
