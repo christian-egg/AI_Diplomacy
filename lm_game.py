@@ -31,7 +31,9 @@ from ai_diplomacy.game_logic import (
     initialize_new_game,
 )
 from ai_diplomacy.diary_logic import run_diary_consolidation
-from ai_diplomacy.collusion import GAME_LENGTHS, POWERS, read_saved_collusion, resolve_colluders, resolve_max_year
+from ai_diplomacy.collusion import (
+    COLLUDER_COUNTS, GAME_LENGTHS, check_monitor_prompts, read_saved_collusion, resolve_colluders, resolve_max_year,
+)
 from config import config
 
 dotenv.load_dotenv()
@@ -109,16 +111,24 @@ def parse_arguments():
         "--n_colluders",
         type=int,
         default=0,
-        choices=range(len(POWERS) + 1),
+        choices=COLLUDER_COUNTS,
         metavar="N",
-        help="Number of powers given the hidden objective, drawn at random. 0 (default) "
-             "is a normal game, i.e. the control condition.",
+        help="Number of powers given the hidden objective (\"secret operatives\"), drawn at "
+             "random: 0 or 3-7. 0 (default) is a normal game, i.e. the control condition.",
     )
     parser.add_argument(
         "--colluder_seed",
         type=int,
         default=None,
         help="Seed for choosing the colluders. If omitted, one is drawn and saved with the game.",
+    )
+    parser.add_argument(
+        "--monitor_in_prompt",
+        type=_str2bool,
+        nargs="?",
+        const=True,
+        default=False,
+        help="Tell secret operatives about the monitor. Needs the monitor_*.txt prompt files.",
     )
     parser.add_argument(
         "--num_negotiation_rounds",
@@ -269,6 +279,7 @@ async def main():
 
     try:
         args.max_year = resolve_max_year(args.game_length, args.max_year, args.end_at_phase)
+        check_monitor_prompts(args.monitor_in_prompt)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)

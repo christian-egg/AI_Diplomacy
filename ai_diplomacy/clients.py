@@ -56,6 +56,8 @@ class BaseModelClient:
         logger.info(f"[{model_name}] BaseModelClient initialized with prompts_dir: {prompts_dir}")
         # Load a default initially, can be overwritten by set_system_prompt
         self.system_prompt = load_prompt("system_prompt.txt", prompts_dir=self.prompts_dir)
+        # Set for secret operatives only (collusion.apply_operative_prompts).
+        self.order_objective: Optional[str] = None
         self.max_tokens = 16000  # default unless overridden
 
     def set_system_prompt(self, content: str):
@@ -106,6 +108,7 @@ class BaseModelClient:
             agent_relationships=agent_relationships,
             agent_private_diary_str=agent_private_diary_str,
             prompts_dir=self.prompts_dir,
+            order_objective=self.order_objective,
         )
 
         raw_response = ""

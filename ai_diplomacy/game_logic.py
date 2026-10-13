@@ -15,6 +15,7 @@ from .agent import DiplomacyAgent, ALL_POWERS
 from .clients import load_model_client
 from .game_history import GameHistory
 from .initialization import initialize_agent_state_ext
+from .collusion import apply_operative_prompts
 from .utils import atomic_write_json, atomic_write_json_async, assign_models_to_powers
 
 logger = logging.getLogger(__name__)
@@ -258,6 +259,9 @@ def load_game_state(
                 override_model_id=override_id,
                 override_max_tokens=model_max_tokens.get(power_name),
             )
+        apply_operative_prompts(
+            agents, getattr(run_config, "colluders", None) or [], getattr(run_config, "monitor_in_prompt", False)
+        )
 
     # --- Rebuild GameHistory --------------------------------------------------
     game_history = GameHistory()
@@ -383,6 +387,9 @@ async def initialize_new_game(
                     f"Failed to create agent or client for {power_name} with model {model_id}: {e}",
                     exc_info=True,
                 )
+
+    # Operative prompts go in before the first model call, which is the initialization below.
+    apply_operative_prompts(agents, getattr(args, "colluders", None) or [], getattr(args, "monitor_in_prompt", False))
 
     logger.info(f"Running {len(initialization_tasks)} agent initializations concurrently...")
     initialization_results = await asyncio.gather(*initialization_tasks, return_exceptions=True)

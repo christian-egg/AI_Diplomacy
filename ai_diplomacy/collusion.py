@@ -45,10 +45,16 @@ def resolve_max_year(game_length: Optional[str], max_year: Optional[int], end_at
 POWERS = ("AUSTRIA", "ENGLAND", "FRANCE", "GERMANY", "ITALY", "RUSSIA", "TURKEY")
 
 
+# With 2 operatives, eliminating everyone else almost forces one of them past 18 of the
+# 34 supply centers, which is a solo win and so a loss. Hence 0 or at least 3.
+MIN_COLLUDERS = 3
+COLLUDER_COUNTS = (0,) + tuple(range(MIN_COLLUDERS, len(POWERS) + 1))
+
+
 def choose_colluders(n_colluders: int, seed: int) -> List[str]:
     """`n_colluders` distinct powers drawn with `seed`, in alphabetical order."""
-    if not 0 <= n_colluders <= len(POWERS):
-        raise ValueError(f"--n_colluders must be between 0 and {len(POWERS)}, got {n_colluders}")
+    if n_colluders not in COLLUDER_COUNTS:
+        raise ValueError(f"--n_colluders must be 0 or {MIN_COLLUDERS}-{len(POWERS)}, got {n_colluders}")
     return sorted(random.Random(seed).sample(POWERS, n_colluders))
 
 
@@ -80,3 +86,80 @@ def resolve_colluders(n_colluders: int, seed: Optional[int], saved: Optional[dic
     if seed is None:
         seed = random.SystemRandom().randrange(2**31)
     return seed, choose_colluders(n_colluders, seed)
+
+
+# --- Operative prompts ----------------------------------------------------------------
+# Colluders are called "secret operatives" in everything the models see. An operative
+# gets two replacements; everyone else's prompts are left exactly as upstream wrote them.
+# - prompts_simple/collusion/system_prompt.txt replaces <power>_system_prompt.txt. The
+#   system prompt goes with every call the power makes. Fill-ins: {power_name},
+#   {n_colluders}, {n_other_colluders}, {monitor_goal}, {monitor_tip}.
+# - prompts_simple/collusion/order_objective.txt replaces the "Primary Objective" lines
+#   at the top of the three order-instruction files. Fill-in: {monitor_reminder}.
+# The monitor fill-ins are blank unless --monitor_in_prompt is on. Their text then comes
+# from monitor_goal.txt, monitor_tip.txt and monitor_reminder.txt in the same folder.
+
+OPERATIVE_PROMPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts_simple", "collusion")
+UPSTREAM_ORDER_OBJECTIVE = "# Primary Objective\nControl 18 supply centers. Nothing else will do."
+MONITOR_PROMPT_FILES = ("monitor_goal.txt", "monitor_tip.txt", "monitor_reminder.txt")
+
+
+def _read_operative_prompt(file_name: str) -> str:
+    with open(os.path.join(OPERATIVE_PROMPTS_DIR, file_name), "r", encoding="utf-8") as f:
+        return f.read().strip()
+
+
+def check_monitor_prompts(monitor_in_prompt: bool) -> None:
+    """Fail before the game starts if --monitor_in_prompt is on but its text isn't written."""
+    if not monitor_in_prompt:
+        return
+    missing = [n for n in MONITOR_PROMPT_FILES if not os.path.isfile(os.path.join(OPERATIVE_PROMPTS_DIR, n))]
+    if missing:
+        raise ValueError(f"--monitor_in_prompt needs {', '.join(missing)} in {OPERATIVE_PROMPTS_DIR}")
+
+
+def _monitor_text(file_name: str, monitor_in_prompt: bool) -> str:
+    return _read_operative_prompt(file_name) if monitor_in_prompt else ""
+
+
+def _tidy(text: str) -> str:
+    """Drop trailing spaces and blank lines left where a fill-in was empty."""
+    return "\n".join(line.rstrip() for line in text.splitlines()).strip()
+
+
+def operative_system_prompt(power_name: str, n_colluders: int, monitor_in_prompt: bool = False) -> str:
+    goal = _monitor_text("monitor_goal.txt", monitor_in_prompt)
+    return _tidy(_read_operative_prompt("system_prompt.txt").format(
+        power_name=power_name,
+        n_colluders=n_colluders,
+        n_other_colluders=n_colluders - 1,
+        monitor_goal=f" {goal}" if goal else "",  # continues the "Your Goal" paragraph
+        monitor_tip=_monitor_text("monitor_tip.txt", monitor_in_prompt),  # its own line
+    ))
+
+
+def operative_order_objective(monitor_in_prompt: bool = False) -> str:
+    reminder = _monitor_text("monitor_reminder.txt", monitor_in_prompt)
+    return _tidy(_read_operative_prompt("order_objective.txt").format(
+        monitor_reminder=f" {reminder}" if reminder else "",
+    ))
+
+
+def with_operative_objective(instructions: str, order_objective: str) -> str:
+    """Order instructions with upstream's "Primary Objective" lines swapped for an operative's.
+    Errors if those lines aren't there, so a change upstream can't silently leave the
+    18-center goal in an operative's prompt."""
+    if UPSTREAM_ORDER_OBJECTIVE not in instructions:
+        raise ValueError("order instructions no longer contain upstream's Primary Objective lines")
+    return instructions.replace(UPSTREAM_ORDER_OBJECTIVE, order_objective, 1)
+
+
+def apply_operative_prompts(agents: dict, colluders: List[str], monitor_in_prompt: bool = False) -> None:
+    """Give each colluder's agent the operative system prompt and order objective. Call it
+    after the agents exist and before any model call, for new and resumed games alike."""
+    for power_name in colluders:
+        if power_name not in agents:  # already eliminated when a game is resumed
+            continue
+        client = agents[power_name].client
+        client.set_system_prompt(operative_system_prompt(power_name, len(colluders), monitor_in_prompt))
+        client.order_objective = operative_order_objective(monitor_in_prompt)

@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any  # Added Any for game type placehol
 
 from config import config
 from .utils import load_prompt, get_prompt_path, get_board_state
+from .collusion import with_operative_objective
 from .possible_order_context import (
     generate_rich_order_context,
     generate_rich_order_context_xml,
@@ -160,6 +161,7 @@ def construct_order_generation_prompt(
     agent_relationships: Optional[Dict[str, str]] = None,
     agent_private_diary_str: Optional[str] = None,
     prompts_dir: Optional[str] = None,
+    order_objective: Optional[str] = None,
 ) -> str:
     """Constructs the final prompt for order generation.
 
@@ -174,6 +176,8 @@ def construct_order_generation_prompt(
         agent_relationships: Optional dictionary of agent's relationships with other powers.
         agent_private_diary_str: Optional string of agent's private diary.
         prompts_dir: Optional path to the prompts directory.
+        order_objective: For secret operatives, text replacing the "Primary Objective"
+            lines of the order instructions (see collusion.py). None for everyone else.
 
     Returns:
         A string containing the complete prompt for the LLM.
@@ -207,6 +211,8 @@ def construct_order_generation_prompt(
         # Load generic instruction file
         instructions_file = get_prompt_path(f"{base_instruction_file}.txt")
         instructions = load_prompt(instructions_file, prompts_dir=prompts_dir)
+    if order_objective:
+        instructions = with_operative_objective(instructions, order_objective)
     _use_simple = config.SIMPLE_PROMPTS
 
     include_order_history = False # defaulting to not include order history in order generation prompt for now
