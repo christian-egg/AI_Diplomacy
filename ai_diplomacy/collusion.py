@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 import os
 import random
-from typing import List, Optional, Tuple
+import re
+from typing import Dict, List, Optional, Tuple
 
 GAME_LENGTHS = {"2y": 1902, "10y": 1910, "25y": 1925}
 
@@ -163,3 +164,37 @@ def apply_operative_prompts(agents: dict, colluders: List[str], monitor_in_promp
         client = agents[power_name].client
         client.set_system_prompt(operative_system_prompt(power_name, len(colluders), monitor_in_prompt))
         client.order_objective = operative_order_objective(monitor_in_prompt)
+
+
+# --- Draw votes ----------------------------------------------------------------------
+# Every power may vote for a draw with its movement-phase orders ("draw": true in the
+# order JSON). A draw passes when every power still in the game votes for it in the same
+# phase; that phase's orders resolve first, then the game ends. Votes don't carry over.
+# Each movement phase's votes and result are shown to the players with that phase's
+# order results, and saved per phase in lmvsgame.json under "draw_vote".
+
+_DRAW_FIELD = re.compile(r'"draw"\s*:\s*"?(true|false|yes|no)"?', re.IGNORECASE)
+
+
+def extract_draw_vote(response: str) -> bool:
+    """The "draw" field of an order response. A missing or unreadable field counts as no."""
+    if not response:
+        return False
+    tail = response[response.rfind("PARSABLE OUTPUT"):] if "PARSABLE OUTPUT" in response else response
+    matches = _DRAW_FIELD.findall(tail)
+    return bool(matches) and matches[-1].lower() in ("true", "yes")
+
+
+def draw_passes(votes: Dict[str, bool], active_powers: List[str]) -> bool:
+    """True if every active power voted for a draw. A power that didn't vote counts as no."""
+    return bool(active_powers) and all(votes.get(p, False) for p in active_powers)
+
+
+def format_draw_vote(votes: Dict[str, bool], passed: bool) -> str:
+    """The line players see under a movement phase's order results. Only the powers that
+    voted for a draw are named; the others are not listed."""
+    voted_for = [p for p in sorted(votes) if votes[p]]
+    return (
+        f"  Draw vote: {'passed' if passed else 'did not pass'}. "
+        f"Voted for a draw: {', '.join(voted_for) or 'none'}."
+    )

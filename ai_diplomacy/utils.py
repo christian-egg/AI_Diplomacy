@@ -153,7 +153,7 @@ async def get_valid_orders(
 
     Returns
     -------
-    dict : { "valid": [...], "invalid": [...] }
+    dict : { "valid": [...], "invalid": [...], "draw": bool }
     """
 
     # ── 1. Ask the model ───────────────────────────────────────
@@ -179,7 +179,7 @@ async def get_valid_orders(
     if not isinstance(raw_orders, list):
         logger.warning("[%s] Orders received from LLM are not a list: %s. Using fallback.", power_name, raw_orders)
         model_error_stats[client.model_name]["order_decoding_errors"] += 1
-        return {"valid": client.fallback_orders(possible_orders), "invalid": []}
+        return {"valid": client.fallback_orders(possible_orders), "invalid": [], "draw": getattr(client, "draw_vote", False)}
 
     # ── 3. Round-trip validation with engine ───────────────────
     CODE_TO_ENGINE = {
@@ -224,7 +224,7 @@ async def get_valid_orders(
     else:
         logger.debug("[%s] All orders valid: %s", power_name, valid)
 
-    return {"valid": valid, "invalid": invalid}
+    return {"valid": valid, "invalid": invalid, "draw": getattr(client, "draw_vote", False)}
 
 
 def normalize_and_compare_orders(

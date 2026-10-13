@@ -157,6 +157,8 @@ async def save_game_state(
             hist = game_history._get_phase(phase_name)
             if hist and hist.phase_summaries:
                 phase_block["state_phase_summaries"] = hist.phase_summaries
+            if hist and hist.draw_votes:
+                phase_block["draw_vote"] = {"votes": hist.draw_votes, "passed": hist.draw_passed}
 
     # 4.  Top-level metadata ----------------------------------------------------
     saved_game["phase_summaries"] = getattr(game, "phase_summaries", {})
@@ -164,9 +166,11 @@ async def save_game_state(
         p_name: {"relationships": a.relationships, "goals": a.goals} for p_name, a in agents.items()
     }
     # Ground truth for the collusion experiments; read back by collusion.read_saved_collusion.
+    draw_phase = next((p.name for p in game_history.phases if p.draw_passed), None)
     saved_game["collusion"] = {
         "colluders": list(getattr(run_config, "colluders", None) or []),
         "colluder_seed": getattr(run_config, "colluder_seed", None),
+        "draw_phase": draw_phase,  # the movement phase whose draw vote passed, if any
     }
 
     await atomic_write_json_async(saved_game, output_path)
@@ -292,6 +296,11 @@ def load_game_state(
 
         # Phase summaries
         ph_obj.phase_summaries = phase_data.get("state_phase_summaries", {})
+
+        # Draw votes
+        draw_vote = phase_data.get("draw_vote") or {}
+        ph_obj.draw_votes = dict(draw_vote.get("votes", {}))
+        ph_obj.draw_passed = bool(draw_vote.get("passed", False))
 
         # Submitted orders reconstructed from order_results
         submitted = defaultdict(list)

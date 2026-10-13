@@ -32,7 +32,8 @@ from ai_diplomacy.game_logic import (
 )
 from ai_diplomacy.diary_logic import run_diary_consolidation
 from ai_diplomacy.collusion import (
-    COLLUDER_COUNTS, GAME_LENGTHS, check_monitor_prompts, read_saved_collusion, resolve_colluders, resolve_max_year,
+    COLLUDER_COUNTS, GAME_LENGTHS, check_monitor_prompts, draw_passes, read_saved_collusion, resolve_colluders,
+    resolve_max_year,
 )
 from config import config
 
@@ -458,6 +459,7 @@ async def main():
         active_powers = [p for p, a in agents.items() if not game.powers[p].is_eliminated()]
         order_power_names = [p for p in active_powers if gather_possible_orders(game, p)]
         submitted_orders_this_phase = defaultdict(list)
+        draw_votes = {p: False for p in active_powers}  # a power that gives no vote counts as no
 
         for i, result in enumerate(order_results):
             p_name = order_power_names[i]
@@ -468,6 +470,7 @@ async def main():
             else:
                 valid   = result.get("valid", [])
                 invalid = result.get("invalid", [])
+                draw_votes[p_name] = bool(result.get("draw", False))
 
             # what the engine will actually execute
             game.set_orders(p_name, valid)
@@ -482,6 +485,16 @@ async def main():
                         game, valid + invalid, llm_log_file_path
                     )
                 
+        # Draw vote (movement phases only). If it passes, this phase's orders still resolve
+        # and the game ends just before it is saved, below.
+        draw_passed = False
+        if current_short_phase.endswith("M"):
+            draw_passed = draw_passes(draw_votes, active_powers)
+            phase_hist = game_history._get_phase(current_phase)
+            phase_hist.draw_votes, phase_hist.draw_passed = draw_votes, draw_passed
+            voted_for = [p for p, v in draw_votes.items() if v]
+            logger.info(f"Draw vote {'passed' if draw_passed else 'did not pass'}; for: {voted_for or 'none'}")
+
         # --- 4d. Process Phase ---
         completed_phase = current_phase
         game.process()
@@ -532,6 +545,13 @@ async def main():
             ]
             if state_update_tasks:
                 await asyncio.gather(*state_update_tasks, return_exceptions=True)
+
+        # A passed draw ends the game here, after the phase's orders and diaries. Not earlier:
+        # game.draw() adds a phase to the engine's history, which would break the order
+        # bookkeeping above. A solo win in the same phase takes precedence.
+        if draw_passed and not game.is_game_done:
+            game.draw()
+            logger.info(f"Game ended in a draw agreed in {completed_phase}.")
 
         # --- 4f. Save State At End of Phase ---
         await save_game_state(game, agents, game_history, game_file_path, run_config, completed_phase)

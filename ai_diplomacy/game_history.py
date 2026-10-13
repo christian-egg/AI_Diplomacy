@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import re
 
+from .collusion import format_draw_vote
+
 logger = logging.getLogger("utils")
 logger.setLevel(logging.INFO)
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +32,9 @@ class Phase:
     phase_summaries: Dict[str, str] = field(default_factory=dict)
     # NEW: Store experience/journal updates from each power for this phase
     experience_updates: Dict[str, str] = field(default_factory=dict)
+    # Movement phases only: each active power's draw vote, and whether the draw passed.
+    draw_votes: Dict[str, bool] = field(default_factory=dict)
+    draw_passed: bool = False
 
     def add_plan(self, power_name: str, plan: str):
         self.plans[power_name] = plan
@@ -248,6 +253,10 @@ class GameHistory:
                 # 2️⃣ invalid submissions
                 for k in sorted(set(sub_norm) - seen_ok):
                     out_lines.append(f"    {sub_norm[k]} (Rejected by engine: invalid)")
+
+            # Draw votes are shown with the rest of the phase's results.
+            if ph.draw_votes:
+                out_lines.append(format_draw_vote(ph.draw_votes, ph.draw_passed))
 
         if len(out_lines) == 1:
             return "\n(No orders were issued in recent history)\n"

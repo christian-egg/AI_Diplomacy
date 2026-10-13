@@ -10,12 +10,14 @@ Control 18 supply centers. Nothing else will do.
   - Example: 'F SPA/SC - MAO'
   - Only fleets need coast specification.
 5. Aim to issue an order for all of your units. Holds tend to be wasted orders.
+6. You may vote to draw the game, which ends the game with no winner. This requires all remaining players to vote in favor.
 
 Your Task:
 1. Reason
   - comprehensive reasoning about your move decisions
 2. Output Moves in JSON
   - aim to return an order for each of your units.
+  - include draw decision as a separate JSON field
 
 Respond with this exact format:
 
@@ -24,5 +26,6 @@ Reasoning:
 
 PARSABLE OUTPUT:
 {{
-  "orders": ["order1", "order2", ...]
+  "orders": ["order1", "order2", ...],
+  "draw": false
 }}

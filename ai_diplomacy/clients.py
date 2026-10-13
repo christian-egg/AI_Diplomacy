@@ -27,6 +27,7 @@ from .utils import load_prompt, run_llm_and_log, log_llm_response, log_llm_respo
 
 # Import DiplomacyAgent for type hinting if needed, but avoid circular import if possible
 from .prompt_constructor import construct_order_generation_prompt, build_context_prompt
+from .collusion import extract_draw_vote
 # Moved formatter imports to avoid circular import - imported locally where needed
 
 # set logger back to just info
@@ -58,6 +59,8 @@ class BaseModelClient:
         self.system_prompt = load_prompt("system_prompt.txt", prompts_dir=self.prompts_dir)
         # Set for secret operatives only (collusion.apply_operative_prompts).
         self.order_objective: Optional[str] = None
+        # The "draw" field of this client's latest order response (collusion.extract_draw_vote).
+        self.draw_vote: bool = False
         self.max_tokens = 16000  # default unless overridden
 
     def set_system_prompt(self, content: str):
@@ -112,6 +115,7 @@ class BaseModelClient:
         )
 
         raw_response = ""
+        self.draw_vote = False  # no vote unless the response says so
         # Initialize success status. Will be updated based on outcome.
         success_status = "Failure: Initialized"
         parsed_orders_for_return = self.fallback_orders(possible_orders)  # Default to fallback
@@ -143,6 +147,7 @@ class BaseModelClient:
 
             # Attempt to parse the final "orders" from the formatted response
             move_list = self._extract_moves(formatted_response, power_name)
+            self.draw_vote = extract_draw_vote(formatted_response)
 
             if not move_list:
                 logger.warning(f"[{self.model_name}] Could not extract moves for {power_name}. Using fallback.")

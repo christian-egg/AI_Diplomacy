@@ -11,8 +11,9 @@ from ai_diplomacy.collusion import (
     check_monitor_prompts, choose_colluders, operative_order_objective, operative_system_prompt,
     read_saved_collusion, resolve_colluders, resolve_max_year, with_operative_objective,
 )
+from ai_diplomacy.collusion import draw_passes, extract_draw_vote, format_draw_vote
 from ai_diplomacy.prompt_constructor import construct_order_generation_prompt
-from ai_diplomacy.utils import gather_possible_orders, load_prompt
+from ai_diplomacy.utils import gather_possible_orders, get_valid_orders, load_prompt
 from ai_diplomacy.game_history import GameHistory
 from ai_diplomacy.game_logic import save_game_state
 
@@ -121,7 +122,7 @@ def test_save_game_state_writes_colluders(tmp_path):
     path = tmp_path / "lmvsgame.json"
     config = Namespace(colluders=["FRANCE", "RUSSIA"], colluder_seed=3)
     asyncio.run(save_game_state(Game(), {}, GameHistory(), str(path), config, completed_phase_name="S1901M"))
-    assert read_saved_collusion(str(path)) == {"colluders": ["FRANCE", "RUSSIA"], "colluder_seed": 3}
+    assert read_saved_collusion(str(path)) == {"colluders": ["FRANCE", "RUSSIA"], "colluder_seed": 3, "draw_phase": None}
 
 
 # --- Operative prompts ----------------------------------------------------------------
@@ -231,3 +232,107 @@ def test_order_prompt_for_operative_differs_only_in_objective():
     assert "Control 18 supply centers. Nothing else will do." in normal
     assert "Nothing else will do." not in operative
     assert operative.replace(operative_order_objective(), UPSTREAM_ORDER_OBJECTIVE) == normal
+
+
+# --- Draw votes -----------------------------------------------------------------------
+
+@pytest.mark.parametrize("response, vote", [
+    ('PARSABLE OUTPUT:\n{"orders": ["A PAR H"], "draw": true}', True),
+    ('PARSABLE OUTPUT:\n{"orders": ["A PAR H"], "draw": false}', False),
+    ('PARSABLE OUTPUT:\n{"orders": ["A PAR H"]}', False),               # missing counts as no
+    ('PARSABLE OUTPUT:\n{"orders": [], "draw": "true"}', True),           # quoted
+    ('PARSABLE OUTPUT:\n{"orders": [], "Draw": TRUE}', True),             # any case
+    ('Reasoning: maybe "draw": true later.\nPARSABLE OUTPUT:\n{"orders": [], "draw": false}', False),
+    ("", False),
+])
+def test_extract_draw_vote(response, vote):
+    assert extract_draw_vote(response) is vote
+
+
+def test_draw_passes_only_when_every_active_power_votes_yes():
+    active = ["AUSTRIA", "FRANCE", "ITALY"]
+    assert draw_passes({"AUSTRIA": True, "FRANCE": True, "ITALY": True}, active)
+    assert not draw_passes({"AUSTRIA": True, "FRANCE": False, "ITALY": True}, active)
+    assert not draw_passes({"AUSTRIA": True, "FRANCE": True}, active)  # Italy gave no vote
+    assert draw_passes({"AUSTRIA": True, "FRANCE": True, "ITALY": True, "TURKEY": False}, active)  # Turkey is out
+    assert not draw_passes({}, [])
+
+
+def test_format_draw_vote():
+    votes = {"FRANCE": True, "AUSTRIA": False, "ITALY": True}
+    assert format_draw_vote(votes, False) == (
+        "  Draw vote: did not pass. Voted for a draw: FRANCE, ITALY."
+    )
+    assert format_draw_vote({"FRANCE": False}, False) == "  Draw vote: did not pass. Voted for a draw: none."
+    assert "AUSTRIA" not in format_draw_vote(votes, False)  # no-voters aren't named
+
+
+def test_movement_instructions_ask_for_a_draw_field():
+    text = load_prompt("order_instructions_movement_phase.txt", prompts_dir=PROMPTS_SIMPLE)
+    assert "6. You may vote to draw the game" in text
+    assert '"draw": false' in text
+    # the operative swap still finds upstream's objective lines
+    assert "Nothing else will do." not in with_operative_objective(text, operative_order_objective())
+
+
+class _OrderClient:
+    model_name = "fake"
+
+    def __init__(self, orders, draw):
+        self._orders, self._draw = orders, draw
+        self.draw_vote = False
+
+    async def get_orders(self, **kwargs):
+        self.draw_vote = self._draw
+        return self._orders
+
+    def fallback_orders(self, possible_orders):
+        return []
+
+
+@pytest.mark.parametrize("draw", [True, False])
+def test_get_valid_orders_passes_the_vote_through(draw):
+    game = Game()
+    result = asyncio.run(get_valid_orders(
+        game, _OrderClient(["A PAR - BUR"], draw), game.get_state(), "FRANCE",
+        gather_possible_orders(game, "FRANCE"), GameHistory(), {"fake": {}},
+    ))
+    assert result["valid"] == ["A PAR - BUR"] and result["draw"] is draw
+
+
+def _history_after_spring(votes, passed):
+    game = Game()
+    game.set_orders("FRANCE", ["A PAR - BUR"])
+    history = GameHistory()
+    history.add_phase("S1901M")
+    phase = history._get_phase("S1901M")
+    phase.orders_by_power["FRANCE"] = ["A PAR - BUR"]
+    phase.draw_votes, phase.draw_passed = votes, passed
+    game.process()
+    history.add_phase("F1901M")
+    return game, history
+
+
+def test_players_see_the_draw_vote_with_the_order_results():
+    game, history = _history_after_spring({"FRANCE": True, "ITALY": False}, False)
+    text = history.get_order_history_for_prompt(game, "ITALY", "F1901M")
+    assert "--- Orders from Phase: S1901M ---" in text
+    assert "Draw vote: did not pass. Voted for a draw: FRANCE." in text
+    assert "Voted against" not in text
+
+
+def test_no_vote_line_when_no_votes_were_recorded():
+    game, history = _history_after_spring({}, False)
+    assert "Draw vote" not in history.get_order_history_for_prompt(game, "ITALY", "F1901M")
+
+
+def test_draw_after_processing_ends_the_game_and_is_saved(tmp_path):
+    game, history = _history_after_spring({p: True for p in POWERS}, True)
+    game.draw()  # as the game loop does, after the phase resolved
+    assert game.is_game_done
+    path = tmp_path / "lmvsgame.json"
+    asyncio.run(save_game_state(game, {}, history, str(path), Namespace(), completed_phase_name="S1901M"))
+    saved = json.loads(path.read_text())
+    spring = next(p for p in saved["phases"] if p["name"] == "S1901M")
+    assert spring["draw_vote"] == {"votes": {p: True for p in POWERS}, "passed": True}
+    assert saved["collusion"]["draw_phase"] == "S1901M"
