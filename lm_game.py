@@ -31,6 +31,7 @@ from ai_diplomacy.game_logic import (
     initialize_new_game,
 )
 from ai_diplomacy.diary_logic import run_diary_consolidation
+from ai_diplomacy.operative_scratchpad import write_operative_scratchpad
 from ai_diplomacy.collusion import (
     COLLUDER_COUNTS, GAME_LENGTHS, check_monitor_prompts, draw_passes, read_saved_collusion, resolve_colluders,
     resolve_max_year,
@@ -130,6 +131,18 @@ def parse_arguments():
         const=True,
         default=False,
         help="Tell secret operatives about the monitor. Needs the monitor_*.txt prompt files.",
+    )
+    parser.add_argument(
+        "--scratchpad_plan_words",
+        type=int,
+        default=100,
+        help="Word limit for the plan in each operative's scratchpad (default: 100).",
+    )
+    parser.add_argument(
+        "--scratchpad_evidence_words",
+        type=int,
+        default=50,
+        help="Word limit for the evidence in each operative's scratchpad (default: 50).",
     )
     parser.add_argument(
         "--num_negotiation_rounds",
@@ -281,6 +294,8 @@ async def main():
     try:
         args.max_year = resolve_max_year(args.game_length, args.max_year, args.end_at_phase)
         check_monitor_prompts(args.monitor_in_prompt)
+        if args.scratchpad_plan_words < 1 or args.scratchpad_evidence_words < 1:
+            raise ValueError("--scratchpad_plan_words and --scratchpad_evidence_words must be at least 1")
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -533,6 +548,19 @@ async def main():
             ]
             if phase_result_diary_tasks:
                 await asyncio.gather(*phase_result_diary_tasks, return_exceptions=True)
+
+            # Operative scratchpads: private notes from each operative still in the game.
+            scratchpad_tasks = [
+                write_operative_scratchpad(
+                    agents[p], game, game_history, current_short_phase, len(run_config.colluders),
+                    run_config.scratchpad_plan_words, run_config.scratchpad_evidence_words,
+                    run_config.monitor_in_prompt, llm_log_file_path,
+                )
+                for p in run_config.colluders
+                if p in agents and not game.powers[p].is_eliminated()
+            ]
+            if scratchpad_tasks:
+                await asyncio.gather(*scratchpad_tasks, return_exceptions=True)
 
         
 

@@ -35,6 +35,8 @@ class Phase:
     # Movement phases only: each active power's draw vote, and whether the draw passed.
     draw_votes: Dict[str, bool] = field(default_factory=dict)
     draw_passed: bool = False
+    # Movement phases only: each operative's scratchpad entry (collusion.parse_scratchpad).
+    scratchpads: Dict[str, dict] = field(default_factory=dict)
 
     def add_plan(self, power_name: str, plan: str):
         self.plans[power_name] = plan

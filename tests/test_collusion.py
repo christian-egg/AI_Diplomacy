@@ -12,6 +12,12 @@ from ai_diplomacy.collusion import (
     read_saved_collusion, resolve_colluders, resolve_max_year, with_operative_objective,
 )
 from ai_diplomacy.collusion import draw_passes, extract_draw_vote, format_draw_vote
+from ai_diplomacy.collusion import (
+    ASSESSMENT_LABELS, NOTES_HEADING, format_operative_notes, parse_scratchpad, scratchpad_prompt,
+    with_monitor_note, with_operative_notes,
+)
+from ai_diplomacy.clients import BaseModelClient
+from ai_diplomacy.operative_scratchpad import restore_operative_notes, write_operative_scratchpad
 from ai_diplomacy.prompt_constructor import construct_order_generation_prompt
 from ai_diplomacy.utils import gather_possible_orders, get_valid_orders, load_prompt
 from ai_diplomacy.game_history import GameHistory
@@ -336,3 +342,158 @@ def test_draw_after_processing_ends_the_game_and_is_saved(tmp_path):
     spring = next(p for p in saved["phases"] if p["name"] == "S1901M")
     assert spring["draw_vote"] == {"votes": {p: True for p in POWERS}, "passed": True}
     assert saved["collusion"]["draw_phase"] == "S1901M"
+
+
+# --- Operative scratchpad -------------------------------------------------------------
+
+OTHERS = [p for p in POWERS if p != "FRANCE"]
+
+
+def _scratchpad_reply(labels=None, evidence="Italy kept its word.", plan="Test Italy with a DMZ."):
+    labels = labels or {p: "unknown" for p in OTHERS}
+    return json.dumps({"evidence": evidence, "assessments": labels, "plan": plan})
+
+
+def _render(monitor=False):
+    return scratchpad_prompt("FRANCE", "S1901M", 4, "(none yet)", "BOARD", "ORDERS", "TALKS", 100, 50, monitor)
+
+
+def test_scratchpad_prompt_fills_everything():
+    text = _render()
+    assert "Exactly 3 of the other powers (AUSTRIA, ENGLAND, GERMANY, ITALY, RUSSIA, TURKEY)" in text
+    assert "(at most 50 words)" in text and "(at most 100 words)" in text
+    assert "no other player will ever see them.\n" in text  # blank monitor note, no stray space
+    assert all(f'    "{p}": "unknown"' in text for p in OTHERS) and '"FRANCE": "unknown"' not in text
+    assert '"TURKEY": "unknown"\n  }' in text  # last line has no trailing comma
+    assert "{" in text and "{power_name}" not in text and "{assessments_example}" not in text
+
+
+def test_monitor_note_goes_into_scratchpad_and_diaries(tmp_path, monkeypatch):
+    for name in ("scratchpad_prompt.txt",):
+        (tmp_path / name).write_text(open(collusion.os.path.join(collusion.OPERATIVE_PROMPTS_DIR, name)).read())
+    (tmp_path / "monitor_note.txt").write_text("NOTE-SENTENCE.")
+    monkeypatch.setattr(collusion, "OPERATIVE_PROMPTS_DIR", str(tmp_path))
+    assert "no other player will ever see them. NOTE-SENTENCE.\n" in _render(monitor=True)
+    diary = "PHASE RESULT ANALYSIS\nYour Power: FRANCE"
+    assert with_monitor_note(diary, "NOTE-SENTENCE.") == "PHASE RESULT ANALYSIS\nNOTE-SENTENCE.\n\nYour Power: FRANCE"
+    assert with_monitor_note(diary, "") == diary
+
+
+def test_apply_operative_prompts_sets_a_blank_monitor_note_when_off():
+    agents = {"FRANCE": Namespace(client=_FakeClient())}
+    apply_operative_prompts(agents, ["FRANCE"])
+    assert agents["FRANCE"].client.monitor_note == ""
+
+
+def test_parse_valid_scratchpad():
+    labels = dict(zip(OTHERS, ASSESSMENT_LABELS[1:]))
+    entry = parse_scratchpad("Sure.\n" + _scratchpad_reply(labels) + "\nDone.", "FRANCE")
+    assert entry["parsed"] and entry["valid"] and entry["problems"] == []
+    assert entry["assessments"] == labels
+    assert entry["evidence_words"] == 4 and entry["plan_words"] == 5
+
+
+def test_parse_scratchpad_normalises_labels_and_flags_bad_ones():
+    labels = {p: "unknown" for p in OTHERS}
+    labels["ITALY"] = "  Likely   Operative "
+    labels["RUSSIA"] = "confirmed operative"
+    del labels["TURKEY"]
+    entry = parse_scratchpad(_scratchpad_reply(labels), "FRANCE")
+    assert entry["parsed"] and not entry["valid"]
+    assert entry["assessments"]["ITALY"] == "likely operative"
+    assert entry["assessments"]["RUSSIA"] is None and entry["assessments"]["TURKEY"] is None
+    assert "TURKEY: no label" in entry["problems"]
+
+
+def test_parse_scratchpad_repairs_small_json_mistakes():
+    reply = _scratchpad_reply().replace('"}', '",}', 1)  # trailing comma
+    assert parse_scratchpad(reply, "FRANCE")["valid"]
+
+
+def test_parse_scratchpad_without_json():
+    assert parse_scratchpad("I refuse.", "FRANCE") == {"parsed": False, "valid": False, "problems": ["no JSON object"]}
+
+
+def test_notes_shown_back_are_cut_to_the_limits():
+    entry = parse_scratchpad(_scratchpad_reply(plan="word " * 120), "FRANCE")
+    notes = format_operative_notes(entry, plan_words=100, evidence_words=50)
+    assert entry["plan_words"] == 120  # saved in full
+    assert notes.splitlines()[-1] == "Plan: " + " ".join(["word"] * 100) + " ..."
+    assert "  ITALY: unknown" in notes
+    assert format_operative_notes(None, 100, 50) == "(none yet)"
+
+
+def test_with_operative_notes():
+    context = "Diary here\n\nMessages This Round\nhi\nEnd Messages"
+    assert with_operative_notes(context, "NOTES") == f"Diary here\n\n{NOTES_HEADING}\nNOTES\n\nMessages This Round\nhi\nEnd Messages"
+    assert with_operative_notes(context, None) == context
+    assert with_operative_notes("No marker", "NOTES") == f"No marker\n\n{NOTES_HEADING}\nNOTES"
+
+
+def test_order_prompt_shows_operative_notes():
+    game = Game()
+    def build(notes):
+        return construct_order_generation_prompt(
+            system_prompt="", game=game, board_state=game.get_state(), power_name="FRANCE",
+            possible_orders=gather_possible_orders(game, "FRANCE"), game_history=GameHistory(),
+            prompts_dir=PROMPTS_SIMPLE, operative_notes=notes,
+        )
+    assert NOTES_HEADING not in build(None)
+    assert f"{NOTES_HEADING}\nMY NOTES" in build("MY NOTES")
+
+
+class _ScriptedClient(BaseModelClient):
+    def __init__(self, reply):
+        super().__init__("scripted", prompts_dir=PROMPTS_SIMPLE)
+        self.reply, self.prompts = reply, []
+
+    async def generate_response(self, prompt, temperature=0.0, inject_random_seed=True):
+        self.prompts.append(prompt)
+        return self.reply
+
+
+def _write(client, tmp_path, history):
+    game = Game()
+    history.add_phase("S1901M")
+    game.process()
+    agent = Namespace(power_name="FRANCE", client=client)
+    return asyncio.run(write_operative_scratchpad(
+        agent, game, history, "S1901M", 4, 100, 50, False, str(tmp_path / "llm_responses.csv"),
+    ))
+
+
+def test_write_operative_scratchpad_records_and_shows_notes(tmp_path):
+    client, history = _ScriptedClient(_scratchpad_reply()), GameHistory()
+    entry = _write(client, tmp_path, history)
+    assert entry["valid"] and history._get_phase("S1901M").scratchpads["FRANCE"] == entry
+    assert client.operative_notes == format_operative_notes(entry, 100, 50)
+    assert "YOUR PREVIOUS NOTES\n(none yet)" in client.prompts[0]
+    assert "operative_scratchpad" in (tmp_path / "llm_responses.csv").read_text()
+
+
+def test_unreadable_scratchpad_keeps_previous_notes(tmp_path):
+    client, history = _ScriptedClient("no json here"), GameHistory()
+    client.operative_notes = "OLD NOTES"
+    entry = _write(client, tmp_path, history)
+    assert not entry["parsed"] and client.operative_notes == "OLD NOTES"
+
+
+def test_restore_operative_notes_uses_latest_parsed_entry():
+    history = GameHistory()
+    for name, reply in [("S1901M", _scratchpad_reply(plan="first")), ("F1901M", _scratchpad_reply(plan="second")),
+                        ("S1902M", "garbage")]:
+        history.add_phase(name)
+        history._get_phase(name).scratchpads["FRANCE"] = parse_scratchpad(reply, "FRANCE")
+    agents = {"FRANCE": Namespace(client=_FakeClient()), "ITALY": Namespace(client=_FakeClient())}
+    restore_operative_notes(agents, history, ["FRANCE"], 100, 50)
+    assert agents["FRANCE"].client.operative_notes.endswith("Plan: second")
+    assert not hasattr(agents["ITALY"].client, "operative_notes") or agents["ITALY"].client.operative_notes is None
+
+
+def test_scratchpads_are_saved_per_phase(tmp_path):
+    game, history = _history_after_spring({}, False)
+    history._get_phase("S1901M").scratchpads["FRANCE"] = parse_scratchpad(_scratchpad_reply(), "FRANCE")
+    path = tmp_path / "lmvsgame.json"
+    asyncio.run(save_game_state(game, {}, history, str(path), Namespace(), completed_phase_name="S1901M"))
+    spring = next(p for p in json.loads(path.read_text())["phases"] if p["name"] == "S1901M")
+    assert spring["scratchpads"]["FRANCE"]["valid"]

@@ -16,6 +16,7 @@ from .clients import load_model_client
 from .game_history import GameHistory
 from .initialization import initialize_agent_state_ext
 from .collusion import apply_operative_prompts
+from .operative_scratchpad import restore_operative_notes
 from .utils import atomic_write_json, atomic_write_json_async, assign_models_to_powers
 
 logger = logging.getLogger(__name__)
@@ -159,6 +160,8 @@ async def save_game_state(
                 phase_block["state_phase_summaries"] = hist.phase_summaries
             if hist and hist.draw_votes:
                 phase_block["draw_vote"] = {"votes": hist.draw_votes, "passed": hist.draw_passed}
+            if hist and hist.scratchpads:
+                phase_block["scratchpads"] = hist.scratchpads
 
     # 4.  Top-level metadata ----------------------------------------------------
     saved_game["phase_summaries"] = getattr(game, "phase_summaries", {})
@@ -302,6 +305,9 @@ def load_game_state(
         ph_obj.draw_votes = dict(draw_vote.get("votes", {}))
         ph_obj.draw_passed = bool(draw_vote.get("passed", False))
 
+        # Operative scratchpads
+        ph_obj.scratchpads = dict(phase_data.get("scratchpads") or {})
+
         # Submitted orders reconstructed from order_results
         submitted = defaultdict(list)
         for pwr, type_map in phase_data.get("order_results", {}).items():
@@ -314,6 +320,11 @@ def load_game_state(
                     if order_str:
                         submitted[pwr].append(order_str)
         ph_obj.submitted_orders_by_power = submitted
+
+    restore_operative_notes(
+        agents, game_history, getattr(run_config, "colluders", None) or [],
+        getattr(run_config, "scratchpad_plan_words", 100), getattr(run_config, "scratchpad_evidence_words", 50),
+    )
 
     return game, agents, game_history, run_config
 

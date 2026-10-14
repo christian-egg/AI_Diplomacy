@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any  # Added Any for game type placehol
 
 from config import config
 from .utils import load_prompt, get_prompt_path, get_board_state
-from .collusion import with_operative_objective
+from .collusion import with_operative_notes, with_operative_objective
 from .possible_order_context import (
     generate_rich_order_context,
     generate_rich_order_context_xml,
@@ -162,6 +162,7 @@ def construct_order_generation_prompt(
     agent_private_diary_str: Optional[str] = None,
     prompts_dir: Optional[str] = None,
     order_objective: Optional[str] = None,
+    operative_notes: Optional[str] = None,
 ) -> str:
     """Constructs the final prompt for order generation.
 
@@ -178,6 +179,8 @@ def construct_order_generation_prompt(
         prompts_dir: Optional path to the prompts directory.
         order_objective: For secret operatives, text replacing the "Primary Objective"
             lines of the order instructions (see collusion.py). None for everyone else.
+        operative_notes: For secret operatives, their latest scratchpad notes, shown in the
+            context. None for everyone else.
 
     Returns:
         A string containing the complete prompt for the LLM.
@@ -234,6 +237,7 @@ def construct_order_generation_prompt(
         include_order_history=include_order_history,
         include_possible_moves_summary=True,
     )
+    context = with_operative_notes(context, operative_notes)
 
     # delete unused section from context:
     context = context.replace('Messages This Round\n\n\nEnd Messages', '')

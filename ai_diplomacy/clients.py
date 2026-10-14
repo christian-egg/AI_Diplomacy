@@ -27,7 +27,7 @@ from .utils import load_prompt, run_llm_and_log, log_llm_response, log_llm_respo
 
 # Import DiplomacyAgent for type hinting if needed, but avoid circular import if possible
 from .prompt_constructor import construct_order_generation_prompt, build_context_prompt
-from .collusion import extract_draw_vote
+from .collusion import extract_draw_vote, with_operative_notes
 # Moved formatter imports to avoid circular import - imported locally where needed
 
 # set logger back to just info
@@ -61,6 +61,10 @@ class BaseModelClient:
         self.order_objective: Optional[str] = None
         # The "draw" field of this client's latest order response (collusion.extract_draw_vote).
         self.draw_vote: bool = False
+        # Operatives only: the latest scratchpad notes, shown in negotiation and order prompts,
+        # and the monitor note for the diary prompts (blank while --monitor_in_prompt is off).
+        self.operative_notes: Optional[str] = None
+        self.monitor_note: str = ""
         self.max_tokens = 16000  # default unless overridden
 
     def set_system_prompt(self, content: str):
@@ -112,6 +116,7 @@ class BaseModelClient:
             agent_private_diary_str=agent_private_diary_str,
             prompts_dir=self.prompts_dir,
             order_objective=self.order_objective,
+            operative_notes=self.operative_notes,
         )
 
         raw_response = ""
@@ -476,6 +481,7 @@ class BaseModelClient:
             agent_private_diary=agent_private_diary_str,  # Pass diary string
             prompts_dir=self.prompts_dir,
         )
+        context = with_operative_notes(context, self.operative_notes)
 
         # KEEP ORIGINAL: Get recent messages targeting this power to prioritize responses
         recent_messages_to_power = game_history.get_recent_messages_to_power(power_name, limit=3)

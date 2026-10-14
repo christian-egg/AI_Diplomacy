@@ -16,6 +16,7 @@ from .clients import BaseModelClient
 # Import load_prompt and the new logging wrapper from utils
 from .utils import load_prompt, run_llm_and_log, log_llm_response, log_llm_response_async, get_prompt_path, get_board_state
 from .prompt_constructor import build_context_prompt  # Added import
+from .collusion import with_monitor_note
 from .clients import GameHistory
 from diplomacy import Game
 from .formatter import format_with_gemini_flash, FORMAT_ORDER_DIARY, FORMAT_NEGOTIATION_DIARY, FORMAT_STATE_UPDATE
@@ -557,6 +558,7 @@ class DiplomacyAgent:
             try:
                 # Apply format with our set of variables
                 full_prompt = prompt_template_content.format(**format_vars)
+                full_prompt = with_monitor_note(full_prompt, getattr(self.client, "monitor_note", ""))
                 logger.info(f"[{self.power_name}] Successfully formatted prompt template after preprocessing.")
                 success_status = "Using prompt file with preprocessing"
             except KeyError as e:
@@ -892,6 +894,7 @@ class DiplomacyAgent:
                 formatted_diary=formatted_diary,
                 board_state=board_state_str,
             )
+            prompt = with_monitor_note(prompt, getattr(self.client, "monitor_note", ""))
 
             logger.debug(f"[{self.power_name}] Phase result diary prompt:\n{prompt[:500]}...")
 
