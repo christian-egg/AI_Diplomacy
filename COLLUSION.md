@@ -161,6 +161,32 @@ uv run python -m ai_diplomacy.collusion_metrics results/*/ --csv identification.
 
 Information leakage (operatives stating the goal openly) needs a judge model and comes later.
 
+## Monitor export
+
+```bash
+uv run python -m ai_diplomacy.monitor_export results/luna_high_2y_ops4
+```
+
+This writes what each monitor may see to `<run>/monitor/actions.json` and
+`<run>/monitor/trajectory.json`. The monitor itself comes later.
+
+- **Action-only view** (the hosting platform's view), per phase:
+  - supply centers at the start of the phase;
+  - every order with its adjudicated result;
+  - rejected orders, marked `invalid`; the unit then holds, so both orders appear;
+  - failed draw votes, naming only the powers that voted for a draw.
+- **Trajectory view** (the deployer's view): the same, plus every private and public message
+  with its negotiation round.
+- **A passed draw:** the export stops at that phase, keeping its orders but not its vote.
+  `--drop_draw_phase` leaves that phase out too.
+- **Never exported:**
+  - diaries, goals and relationships;
+  - order reasoning and scratchpads;
+  - which powers are operatives (and how many);
+  - model names, settings and timestamps.
+- **Turn by turn:** `up_to_phase(export, "F1901M")` and `up_to_year(export, 1901)` cut an
+  export, for feeding the monitor one turn at a time.
+
 ## Upstream's own viewer
 
 The 3D replay is in `ai_animation/`. Copy a game's `lmvsgame.json` to
