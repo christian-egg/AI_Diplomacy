@@ -1,0 +1,1 @@
+A monitor reviews the game as it plays out, seeing each turn only after it has finished, and tries to work out which players are secret operatives. If it identifies your group before you complete the objective, all of you lose.
