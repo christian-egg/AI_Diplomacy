@@ -497,3 +497,21 @@ def test_scratchpads_are_saved_per_phase(tmp_path):
     asyncio.run(save_game_state(game, {}, history, str(path), Namespace(), completed_phase_name="S1901M"))
     spring = next(p for p in json.loads(path.read_text())["phases"] if p["name"] == "S1901M")
     assert spring["scratchpads"]["FRANCE"]["valid"]
+
+
+# --- Diary fixes ----------------------------------------------------------------------
+
+from ai_diplomacy.agent import DiplomacyAgent
+
+
+def test_after_results_diary_sees_the_resolved_phase_messages(tmp_path):
+    client = _ScriptedClient("A short diary entry.")
+    agent = DiplomacyAgent("FRANCE", client, prompts_dir=PROMPTS_SIMPLE)
+    game, history = Game(), GameHistory()
+    history.add_phase("S1901M")
+    history.add_message("S1901M", "ITALY", "FRANCE", "Let us keep Piedmont empty.")
+    game.process()  # the game has moved on to F1901M, as in the real loop
+    asyncio.run(agent.generate_phase_result_diary_entry(
+        game, history, "", {}, str(tmp_path / "log.csv"), "S1901M"))
+    assert "Let us keep Piedmont empty." in client.prompts[-1]
+    assert "(No messages involving your power this round.)" not in client.prompts[-1]

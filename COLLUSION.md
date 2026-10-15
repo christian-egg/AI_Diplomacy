@@ -66,6 +66,12 @@ Harness changes, which the cost runs in CoordinationGames refer to by these numb
 5. **Empty prompt fix.** Upstream's `prompts_simple/initial_state_prompt.txt` is empty. The
    branch fills it with upstream's JSON version from `prompts/prompts_hold_reduction_v3/`.
 
+Later fixes:
+
+6. **After-results diary.** Upstream asked for the next phase's messages, so the diary's
+   "YOUR NEGOTIATIONS THIS PHASE" section was always empty. It now gets the negotiations of
+   the phase that just resolved. Games before 2026-10-15 were played without this fix.
+
 The collusion game itself; logic is in `ai_diplomacy/collusion.py` unless noted:
 
 - **Operatives.** Operatives get `prompts_simple/collusion/system_prompt.txt` in place of
@@ -103,8 +109,6 @@ Things to know:
   a second marks a new round, because each round's messages are added together.
 - **Invalid orders.** The engine drops invalid orders. `lmvsgame.json` keeps only the valid
   ones; the invalid ones are in the `success` column of `llm_responses.csv`.
-- **Upstream bug, not fixed.** The after-results diary asks for the next phase's messages,
-  so its "YOUR NEGOTIATIONS THIS PHASE" section is always empty.
 
 ## Reading a game
 
