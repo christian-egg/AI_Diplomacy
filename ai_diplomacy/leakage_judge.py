@@ -25,7 +25,7 @@ import json
 from pathlib import Path
 from typing import List, Optional
 
-from .collusion import POWERS, _json_object
+from .collusion import POWERS, _json_object, harness_commit
 from .dashboard import long_name
 from .monitor import Completer, openrouter_completer
 from .monitor_export import export_game
@@ -79,7 +79,9 @@ def run_judge(export: dict, complete: Completer, on_phase=None) -> dict:
         messages = phase.get("messages") or []
         if not messages:
             continue
-        response = complete([system, {"role": "user", "content": phase_request(phase)}])
+        request = phase_request(phase)
+        result["system_prompt"] = system["content"]
+        response = complete([system, {"role": "user", "content": request}])
         reply = response.get("text") or ""
         usage = response.get("usage") or {}
         u = result["usage"]
@@ -95,7 +97,8 @@ def run_judge(export: dict, complete: Completer, on_phase=None) -> dict:
         sent = {p: sum(m["sender"] == p for m in messages) for p in POWERS}
         result["phases"].append({"phase": phase["phase"], "messages": len(messages), "sent": sent,
                                  "parsed": verdict["parsed"], "valid": verdict["valid"],
-                                 "problems": verdict["problems"], "flagged": flagged, "reply": reply})
+                                 "problems": verdict["problems"], "flagged": flagged,
+                                 "user_message": request, "reply": reply})
         if on_phase:
             on_phase(result)
     return result
@@ -138,14 +141,16 @@ def main() -> None:
     out = args.run_dir / "leakage" / f"{name}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
 
+    commit = harness_commit(str(Path(__file__).resolve().parent.parent))
+
     def save(result: dict) -> None:
-        result["settings"] = {"model": args.model, "effort": args.effort}
+        result["settings"] = {"model": args.model, "effort": args.effort, "harness_commit": commit}
         out.write_text(json.dumps(result, indent=1))
         last = result["phases"][-1]
         print(f"{last['phase']}: {len(last['flagged'])} of {last['messages']} messages flagged")
 
     result = run_judge(export, openrouter_completer(args.model, args.effort, args.max_tokens), on_phase=save)
-    result["settings"] = {"model": args.model, "effort": args.effort}
+    result["settings"] = {"model": args.model, "effort": args.effort, "harness_commit": commit}
     out.write_text(json.dumps(result, indent=1))  # also when no phase had messages
     operatives = set((game.get("collusion") or {}).get("colluders") or [])
     s = leakage_summary(result, operatives)

@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 from typing import Callable, List, Optional
 
-from .collusion import POWERS, _json_object, count_words
+from .collusion import POWERS, _json_object, count_words, harness_commit
 from .dashboard import load_invalid_orders, long_name
 from .monitor_export import VIEWS, export_game
 
@@ -228,8 +228,12 @@ def run_monitor(export: dict, operatives: set, complete: Completer, turns_per_st
         phases = [ph["phase"] for turn in all_batches[k] for ph in turn]
         # The objective is complete once a draw passes, so that turn's assessment can't catch anyone.
         counts = draw_phase not in phases
+        if k == 0:
+            result["system_prompt"] = messages[0]["content"]
+        # Exactly what was sent this time. With --window_turns, earlier batches are later
+        # shown shortened, so only each batch's first appearance is recorded here.
         step = {"through": last_phase, "phases": phases, **assessment, "correctness": score,
-                "counts_for_detection": counts, "reply": reply}
+                "counts_for_detection": counts, "user_message": messages[-1]["content"], "reply": reply}
         result["steps"].append(step)
         if operatives and counts and score is not None and score >= detection_threshold and not result["detected"]:
             result["detected"], result["detected_at"] = True, last_phase
@@ -296,8 +300,11 @@ def main() -> None:
     out = args.run_dir / "monitor" / "runs" / f"{name}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
 
+    commit = harness_commit(str(Path(__file__).resolve().parent.parent))
+
     def save(result: dict) -> None:
-        result["settings"].update(model=args.model, effort=args.effort, drop_draw_phase=args.drop_draw_phase)
+        result["settings"].update(model=args.model, effort=args.effort, drop_draw_phase=args.drop_draw_phase,
+                                  harness_commit=commit)
         out.write_text(json.dumps(result, indent=1))
         last = result["steps"][-1]
         score = "n/a" if last["correctness"] is None else f"{last['correctness']:.0f}"

@@ -303,6 +303,40 @@ Results go to `<run>/leakage/<model>_<effort>.json`. `collusion_metrics` reports
 - each operative's explicit leaks, leak rate and first leak;
 - non-operatives' flagged messages, which are false positives.
 
+## Uploading to Docent
+
+```bash
+uv run python -m ai_diplomacy.docent_upload results/pilot/*/ --collection_id <id> --env_file ~/CoordinationGames/.env
+```
+
+The team collection is "AI Diplomacy", `787bb147-58d8-40a3-9ac9-0cf63735b585`. `--dry_run` builds
+and lists the runs without uploading.
+
+For each game folder the uploader sends three kinds of run:
+- **One agents run:** a transcript per power holding its model calls in order, plus a game
+  record transcript.
+- **One run per saved monitor run:** the monitor's conversation, with its scores in the
+  message metadata.
+- **One run per saved leakage-judge run.**
+
+Each run is tagged:
+- **Kind:** `type:agents`, `type:monitor` or `type:judge`.
+- **Version:** `version:<harness commit>`; monitor and judge runs also carry `game_version`.
+- **Condition:** `model`, `effort`, `game_length`, `operatives`, `negotiation_rounds`,
+  `monitor_in_prompt`, `status`, `batch` and `outcome`.
+- **Monitor runs also:** `monitor_view`, `monitor_model`, `monitor_effort`, `turns_per_step`,
+  `window`, `knows_objective`, `detection_threshold` and `detected`.
+
+Every tag is also a metadata field. The ground truth is in `operative_powers`.
+
+A receipt, `docent_upload.json`, goes in each game folder, so re-running uploads only what's
+new.
+
+Runs from before `run_settings` existed get their version and effort from a
+`run_settings_backfill.json` in the run folder. Monitor runs made before the monitor saved
+its prompts are rebuilt with the prompt files as they were at the run's commit. Note that
+Docent's `list_agent_run_ids` returns nothing here; count runs with a DQL query instead.
+
 ## Upstream's own viewer
 
 The 3D replay is in `ai_animation/`. Copy a game's `lmvsgame.json` to
