@@ -527,3 +527,42 @@ def test_diary_consolidation_gets_the_monitor_note_only_when_set(tmp_path, note)
     asyncio.run(run_diary_consolidation(agent, Game(), str(tmp_path / "log.csv"), prompts_dir=PROMPTS_SIMPLE))
     assert client.prompts, "consolidation should have called the model"
     assert ("NOTE-SENTENCE." in client.prompts[-1]) == bool(note)
+
+
+# --- Run settings ---------------------------------------------------------------------
+
+from ai_diplomacy.collusion import RUN_SETTING_KEYS, harness_commit, run_settings
+
+
+def test_run_settings_are_saved(tmp_path):
+    game = Game()
+    game.power_model_map = {p: "openrouter:openai/gpt-5.6-luna" for p in POWERS}
+    config = Namespace(reasoning_effort="high", game_length="2y", max_year=1902, n_colluders=4,
+                       num_negotiation_rounds=3, monitor_in_prompt=False, scratchpad_plan_words=100,
+                       scratchpad_evidence_words=50, max_tokens=16000, simple_prompts=True, harness_commit="abc1234",
+                       colluders=["ENGLAND", "ITALY", "RUSSIA", "TURKEY"], colluder_seed=5)
+    path = tmp_path / "lmvsgame.json"
+    asyncio.run(save_game_state(game, {}, GameHistory(), str(path), config, completed_phase_name="S1901M"))
+    settings = json.loads(path.read_text())["run_settings"]
+    assert settings["reasoning_effort"] == "high" and settings["n_colluders"] == 4
+    assert settings["models"]["FRANCE"] == "openrouter:openai/gpt-5.6-luna"
+    assert set(settings) == set(RUN_SETTING_KEYS) | {"models"}
+    assert "colluders" not in settings and "colluder_seed" not in settings  # ground truth stays in "collusion"
+
+
+def test_run_settings_tolerate_missing_options():
+    assert run_settings(Namespace())["reasoning_effort"] is None
+
+
+def test_harness_commit_reads_git(tmp_path, tmp_path_factory):
+    import subprocess
+    git = ["git", "-c", "user.email=test@example.com", "-c", "user.name=test"]
+    subprocess.run(git + ["init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "f.txt").write_text("a")
+    subprocess.run(git + ["add", "f.txt"], cwd=tmp_path, check=True)
+    subprocess.run(git + ["commit", "-qm", "first"], cwd=tmp_path, check=True)
+    commit = harness_commit(str(tmp_path))
+    assert commit and commit.isalnum()
+    (tmp_path / "f.txt").write_text("b")  # uncommitted change
+    assert harness_commit(str(tmp_path)) == commit + "+dirty"
+    assert harness_commit(str(tmp_path_factory.mktemp("not_a_repo"))) is None

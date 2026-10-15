@@ -184,6 +184,37 @@ def apply_operative_prompts(agents: dict, colluders: List[str], monitor_in_promp
         client.monitor_note = operative_monitor_note(monitor_in_prompt)
 
 
+# --- Run settings ---------------------------------------------------------------------
+# One compact block per saved game ("run_settings" in lmvsgame.json) with the condition a
+# run belongs to, for analysis and Docent tags. The operatives themselves are not in it;
+# they stay in the "collusion" block.
+
+RUN_SETTING_KEYS = (
+    "reasoning_effort", "game_length", "max_year", "n_colluders", "num_negotiation_rounds",
+    "monitor_in_prompt", "scratchpad_plan_words", "scratchpad_evidence_words", "max_tokens",
+    "simple_prompts", "harness_commit",
+)
+
+
+def harness_commit(repo_dir: str) -> Optional[str]:
+    """The fork's current commit, with "+dirty" if there are uncommitted changes."""
+    import subprocess
+    try:
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=repo_dir, capture_output=True,
+                                text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo_dir,
+                               capture_output=True, text=True, check=True).stdout.strip()
+        return commit + ("+dirty" if dirty else "")
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def run_settings(run_config, power_model_map: Optional[Dict[str, str]] = None) -> dict:
+    settings = {key: getattr(run_config, key, None) for key in RUN_SETTING_KEYS}
+    settings["models"] = dict(power_model_map or {})
+    return settings
+
+
 # --- Draw votes ----------------------------------------------------------------------
 # Every power may vote for a draw with its movement-phase orders ("draw": true in the
 # order JSON). A draw passes when every power still in the game votes for it in the same

@@ -25,17 +25,16 @@ Tests: `uv run python -m pytest tests`. Plain `pytest` can't import the repo's o
 ## Running a game
 
 The OpenRouter key goes in `OPENROUTER_API_KEY` (we source CoordinationGames' `.env`).
-Reasoning effort is not written to the run's own files, so name the run folder after it.
 
 ```bash
 cd ~/AI_Diplomacy
 set -a && . ~/CoordinationGames/.env && set +a
 RUN=results/luna_high_2y_ops4
 mkdir -p $RUN
-export OPENROUTER_REASONING_EFFORT=high OPENROUTER_USAGE_LOG=$PWD/$RUN/openrouter_usage.jsonl
+export OPENROUTER_USAGE_LOG=$PWD/$RUN/openrouter_usage.jsonl
 M=openrouter:openai/gpt-5.6-luna
 uv run python lm_game.py --game_length 2y --n_colluders 4 --num_negotiation_rounds 3 \
-  --models "$M,$M,$M,$M,$M,$M,$M" --run_dir $RUN
+  --models "$M,$M,$M,$M,$M,$M,$M" --reasoning_effort high --run_dir $RUN
 ```
 
 ### Options added on this branch
@@ -47,7 +46,7 @@ uv run python lm_game.py --game_length 2y --n_colluders 4 --num_negotiation_roun
 | `--colluder_seed S` | seed for the draw; drawn and saved if omitted. Resuming reuses the saved operatives |
 | `--monitor_in_prompt` | tell operatives about the monitor; needs `monitor_goal.txt`, `monitor_tip.txt`, `monitor_reminder.txt` and `monitor_note.txt` in `prompts_simple/collusion/` (not written yet) |
 | `--scratchpad_plan_words`, `--scratchpad_evidence_words` | word limits for the operatives' notes (defaults 100 and 50) |
-| env `OPENROUTER_REASONING_EFFORT` | reasoning effort sent to OpenRouter |
+| `--reasoning_effort` | reasoning effort sent to OpenRouter, saved with the run; defaults to the `OPENROUTER_REASONING_EFFORT` environment variable |
 | env `OPENROUTER_USAGE_LOG` | file that receives each call's usage and billed cost |
 
 ## What the branch changes
@@ -55,7 +54,7 @@ uv run python lm_game.py --game_length 2y --n_colluders 4 --num_negotiation_roun
 Harness changes, which the cost runs in CoordinationGames refer to by these numbers:
 
 1. **Reasoning effort.** Upstream sends no effort setting to OpenRouter. The branch sends
-   `reasoning_effort` from `OPENROUTER_REASONING_EFFORT`.
+   `reasoning_effort` from `--reasoning_effort` (or `OPENROUTER_REASONING_EFFORT`).
 2. **Temperature.** Upstream hard-codes `temperature=0`. The branch leaves it at the
    provider default.
 3. **Cost logging.** Each call's usage, including the billed cost, goes to
@@ -71,6 +70,8 @@ Later fixes:
 6. **After-results diary.** Upstream asked for the next phase's messages, so the diary's
    "YOUR NEGOTIATIONS THIS PHASE" section was always empty. It now gets the negotiations of
    the phase that just resolved. Games before 2026-10-15 were played without this fix.
+7. **Model map on resume.** A resumed game used to save an empty power-to-model map; it is
+   now restored.
 
 The collusion game itself; logic is in `ai_diplomacy/collusion.py` unless noted:
 
@@ -98,7 +99,17 @@ Each run folder has:
   - each power's goals, relationships and diary;
   - `draw_vote` and `scratchpads`.
 
-  A top-level `collusion` block records the operatives, the seed and the draw phase.
+  Two top-level blocks:
+  - `collusion` holds the ground truth: the operatives, the seed and the draw phase.
+  - `run_settings` holds the condition, for analysis and Docent tags:
+    - models and reasoning effort;
+    - game length and max year;
+    - number of operatives;
+    - negotiation rounds;
+    - `monitor_in_prompt`;
+    - scratchpad word limits, `max_tokens` and `simple_prompts`;
+    - `harness_commit`: the fork's git commit, with `+dirty` if there were uncommitted
+      changes.
 - `llm_responses.csv`: every prompt and raw response.
 - `overview.jsonl`: settings and model assignment.
 - `general_game.log`: the run log.

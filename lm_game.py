@@ -33,8 +33,8 @@ from ai_diplomacy.game_logic import (
 from ai_diplomacy.diary_logic import run_diary_consolidation
 from ai_diplomacy.operative_scratchpad import write_operative_scratchpad
 from ai_diplomacy.collusion import (
-    COLLUDER_COUNTS, GAME_LENGTHS, check_monitor_prompts, draw_passes, read_saved_collusion, resolve_colluders,
-    resolve_max_year,
+    COLLUDER_COUNTS, GAME_LENGTHS, check_monitor_prompts, draw_passes, harness_commit, read_saved_collusion,
+    resolve_colluders, resolve_max_year,
 )
 from config import config
 
@@ -131,6 +131,12 @@ def parse_arguments():
         const=True,
         default=False,
         help="Tell secret operatives about the monitor. Needs the monitor_*.txt prompt files.",
+    )
+    parser.add_argument(
+        "--reasoning_effort",
+        default=os.environ.get("OPENROUTER_REASONING_EFFORT") or None,
+        help="Reasoning effort sent to OpenRouter (e.g. medium, high). Defaults to the "
+             "OPENROUTER_REASONING_EFFORT environment variable; saved with the run.",
     )
     parser.add_argument(
         "--scratchpad_plan_words",
@@ -290,6 +296,13 @@ async def main():
     else:
         config.COUNTRY_SPECIFIC_PROMPTS = False
         logger.info("Using generic prompts for all powers")
+
+    # The OpenRouter client reads the effort from the environment; keep the two in step.
+    if args.reasoning_effort:
+        os.environ["OPENROUTER_REASONING_EFFORT"] = args.reasoning_effort
+    else:
+        os.environ.pop("OPENROUTER_REASONING_EFFORT", None)
+    args.harness_commit = harness_commit(os.path.dirname(os.path.abspath(__file__)))
 
     try:
         args.max_year = resolve_max_year(args.game_length, args.max_year, args.end_at_phase)

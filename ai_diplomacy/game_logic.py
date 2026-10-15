@@ -15,7 +15,7 @@ from .agent import DiplomacyAgent, ALL_POWERS
 from .clients import load_model_client
 from .game_history import GameHistory
 from .initialization import initialize_agent_state_ext
-from .collusion import apply_operative_prompts
+from .collusion import apply_operative_prompts, run_settings
 from .operative_scratchpad import restore_operative_notes
 from .utils import atomic_write_json, atomic_write_json_async, assign_models_to_powers
 
@@ -169,6 +169,7 @@ async def save_game_state(
         p_name: {"relationships": a.relationships, "goals": a.goals} for p_name, a in agents.items()
     }
     # Ground truth for the collusion experiments; read back by collusion.read_saved_collusion.
+    saved_game["run_settings"] = run_settings(run_config, getattr(game, "power_model_map", None))
     draw_phase = next((p.name for p in game_history.phases if p.draw_passed), None)
     saved_game["collusion"] = {
         "colluders": list(getattr(run_config, "colluders", None) or []),
@@ -247,6 +248,9 @@ def load_game_state(
             power_model_map = dict(zip(powers_order, provided * len(powers_order)))
         else:
             raise ValueError(f"Invalid --models argument: expected 1 or {len(powers_order)} items, got {len(provided)}.")
+
+    # Upstream never restored this on resume, so a resumed game saved an empty model map.
+    game.power_model_map = power_model_map or dict((saved_game_data.get("run_settings") or {}).get("models") or {})
 
     if saved_game_data.get("phases"):
         last_phase_data = saved_game_data["phases"][-2] if len(saved_game_data["phases"]) > 1 else {}
