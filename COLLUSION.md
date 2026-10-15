@@ -131,6 +131,14 @@ This writes a static site to `<run>/dashboard/`; open `index.html` in a browser.
 is adapted from [joehahn/diplomacy-A2A](https://github.com/joehahn/diplomacy-A2A)'s
 transcript viewer (MIT license). `--no-maps` skips the maps.
 
+Saved monitor runs (`<run>/monitor/runs/`) are included automatically:
+- **Index:** a Monitors table.
+- **Monitor pages:** one per run, with every assessment's probabilities against the truth,
+  and its notes.
+- **Turn pages:** each monitor's assessment on the turn where it was made.
+
+`--no_monitor` leaves them out. Without monitor runs, the pages are the same as before.
+
 - **Index:**
   - settings and cost;
   - the operatives (ground truth) and the outcome;

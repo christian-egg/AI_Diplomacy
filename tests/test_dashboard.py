@@ -52,3 +52,37 @@ def test_dashboard_renders_operatives_scratchpads_and_votes(tmp_path, monkeypatc
 def test_dashboard_draws_maps_with_the_bundled_engine(tmp_path, monkeypatch):
     out = _render(_saved_game(tmp_path), monkeypatch)
     assert (out / "S1901M.orders.svg").exists() and (out / "S1901M.result.svg").exists()
+
+
+def _add_monitor_run(run):
+    runs = run / "monitor" / "runs"
+    runs.mkdir(parents=True)
+    step = {"through": "S1901M", "phases": ["S1901M"], "notes": "Italy and Russia move in step.", "notes_words": 6,
+            "probabilities": {p: (80 if p in OPS else 20) for p in dashboard.POWERS}, "correctness": 80.0,
+            "valid": True, "problems": []}
+    (runs / "trajectory_test.json").write_text(json.dumps({
+        "settings": {"view": "trajectory", "model": "m", "effort": "medium", "turns_per_step": 2,
+                     "window_turns": None, "detection_threshold": 70},
+        "steps": [step], "detected": True, "detected_at": "S1901M",
+        "usage": {"calls": 1, "prompt_tokens": 100, "cached_tokens": 0, "completion_tokens": 10, "cost": 0.001}}))
+
+
+def test_dashboard_shows_monitor_findings(tmp_path, monkeypatch):
+    run = _saved_game(tmp_path)
+    _add_monitor_run(run)
+    out = _render(run, monkeypatch, "--no-maps")
+    assert "<h2>Monitors</h2>" in (out / "index.html").read_text()
+    monitor_page = (out / "monitor.trajectory_test.html").read_text()
+    assert "detected at S1901M" in monitor_page and "Italy and Russia move in step." in monitor_page
+    turn = (out / "S1901M.html").read_text()
+    assert "Monitor assessments after this turn" in turn and "DETECTED" in turn
+
+
+def test_dashboard_without_monitor_findings_is_unchanged(tmp_path, monkeypatch):
+    run = _saved_game(tmp_path)
+    plain = {p.name: p.read_text() for p in _render(run, monkeypatch, "--no-maps").glob("*.html")}
+    _add_monitor_run(run)
+    skipped = {p.name: p.read_text() for p in _render(run, monkeypatch, "--no-maps", "--no_monitor").glob("*.html")
+               if not p.name.startswith("monitor.")}
+    assert skipped == plain
+    assert "Monitors" not in plain["index.html"] and "Monitor assessments" not in plain["S1901M.html"]
