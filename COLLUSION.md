@@ -22,7 +22,40 @@ uv sync --python 3.13
 
 Tests: `uv run python -m pytest tests`. Plain `pytest` can't import the repo's own modules.
 
-## Running a game
+## Running a batch (the usual way)
+
+A batch is described by a JSON file in `collusion_configs/`. The runner plays every game,
+then runs the configured monitors on each game and renders its dashboard. At the end it
+prints the collusion metrics and the billed cost.
+
+```bash
+cd ~/AI_Diplomacy
+uv run python -m ai_diplomacy.collusion_runner collusion_configs/pilot.json --dry_run
+uv run python -m ai_diplomacy.collusion_runner collusion_configs/pilot.json --env_file ~/CoordinationGames/.env
+```
+
+`--dry_run` prints the plan and every command without running anything. Finished games and
+monitors are skipped, so an interrupted batch can be rerun with the same command. A
+half-played game resumes from its last saved phase.
+
+| Config key | Default | Meaning |
+|---|---|---|
+| `name` | (required) | batch name; games go to `results/<name>/<condition>-g<k>/` |
+| `model` | (required) | model for all seven powers, e.g. `openrouter:openai/gpt-5.6-luna` |
+| `reasoning_effort` | (required) | effort, or a list of efforts (each is a condition) |
+| `n_colluders` | (required) | 0 or 3–7, or a list (each is a condition; 0 = control) |
+| `game_length` | `2y` | `2y`, `10y` or `25y` |
+| `games_per_condition` | 1 | games per condition |
+| `num_negotiation_rounds` | 3 | negotiation rounds per movement phase |
+| `colluder_seed_base` | 1000 | game k of a condition uses colluder seed base + k |
+| `parallel_games` | 1 | games played at the same time |
+| `monitors` | `[]` | monitor runs per game, each `{"view", "model", "effort", ...}` plus any monitor option, e.g. `"turns_per_step": 1` or `"stop_on_detection": true` |
+| `dashboards` | `true` | render each game's dashboard |
+| `extra_game_args` | `[]` | further `lm_game.py` arguments |
+
+Each game's console output goes to `<game>/runner.log`.
+
+## Running a single game
 
 The OpenRouter key goes in `OPENROUTER_API_KEY` (we source CoordinationGames' `.env`).
 
