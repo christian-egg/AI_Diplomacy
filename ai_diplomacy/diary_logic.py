@@ -4,6 +4,7 @@ import re
 from typing import TYPE_CHECKING, Optional
 
 from .utils import run_llm_and_log, log_llm_response, load_prompt
+from .collusion import with_monitor_note
 
 if TYPE_CHECKING:
     from diplomacy import Game
@@ -106,6 +107,8 @@ async def run_diary_consolidation(
         power_name=agent.power_name,
         full_diary_text="\n\n".join(entries_to_summarise),
     )
+    # Operatives only, and only with --monitor_in_prompt: the monitor can't see the diary.
+    prompt = with_monitor_note(prompt, getattr(agent.client, "monitor_note", ""))
 
     raw_response = ""
     success_flag = "FALSE"

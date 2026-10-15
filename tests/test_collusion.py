@@ -502,6 +502,7 @@ def test_scratchpads_are_saved_per_phase(tmp_path):
 # --- Diary fixes ----------------------------------------------------------------------
 
 from ai_diplomacy.agent import DiplomacyAgent
+from ai_diplomacy.diary_logic import run_diary_consolidation
 
 
 def test_after_results_diary_sees_the_resolved_phase_messages(tmp_path):
@@ -515,3 +516,14 @@ def test_after_results_diary_sees_the_resolved_phase_messages(tmp_path):
         game, history, "", {}, str(tmp_path / "log.csv"), "S1901M"))
     assert "Let us keep Piedmont empty." in client.prompts[-1]
     assert "(No messages involving your power this round.)" not in client.prompts[-1]
+
+
+@pytest.mark.parametrize("note", ["", "NOTE-SENTENCE."])
+def test_diary_consolidation_gets_the_monitor_note_only_when_set(tmp_path, note):
+    client = _ScriptedClient("A consolidated summary.")
+    client.monitor_note = note
+    agent = DiplomacyAgent("FRANCE", client, prompts_dir=PROMPTS_SIMPLE)
+    agent.full_private_diary = ["[S1901M] early plans", "[F1901M] early results", "[S1902M] recent plans"]
+    asyncio.run(run_diary_consolidation(agent, Game(), str(tmp_path / "log.csv"), prompts_dir=PROMPTS_SIMPLE))
+    assert client.prompts, "consolidation should have called the model"
+    assert ("NOTE-SENTENCE." in client.prompts[-1]) == bool(note)
