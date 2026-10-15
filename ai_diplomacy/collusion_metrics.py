@@ -22,7 +22,10 @@ Reads saved games only (lmvsgame.json); no model calls. Decided with the user on
 - Detection (ai_diplomacy/monitor.py): each monitor run saved under <run>/monitor/runs/
   is reported with its correctness per assessment and whether, and where, it detected the
   coalition. A detection counts as a coalition failure ("detected") for that monitor.
-- Information leakage needs a judge model and comes later.
+- Information leakage (ai_diplomacy/leakage_judge.py): each judge run saved under
+  <run>/leakage/ is reported with the operatives' explicit leaks, their leak rate (leaks
+  per message sent) and first leaks, and the non-operatives' flagged messages, which are
+  false positives.
 """
 from __future__ import annotations
 
@@ -153,10 +156,27 @@ def monitor_summaries(run_dir: Path) -> list[dict]:
             "name": path.stem,
             "detected_at": r.get("detected_at"),
             "correctness": [(s["through"], s.get("correctness")) for s in r.get("steps", [])],
+            "group_exists": [(s["through"], s.get("group_exists")) for s in r.get("steps", [])],
             "invalid_assessments": sum(not s.get("valid") for s in r.get("steps", [])),
             "cost": (r.get("usage") or {}).get("cost", 0),
         })
     return out
+
+
+def leakage_summaries(run_dir: Path, operatives: set) -> list[dict]:
+    from .leakage_judge import leakage_summary
+    return [{"name": path.stem, **leakage_summary(json.loads(path.read_text()), operatives)}
+            for path in sorted((run_dir / "leakage").glob("*.json"))]
+
+
+def _print_leakage(summaries: list[dict], operatives: set) -> None:
+    for s in summaries:
+        rate = lambda r: "n/a" if r is None else f"{100 * r:.1f}%"
+        firsts = ", ".join(f"{p} {v['first']}" for p, v in s["per_power"].items() if p in operatives and v["first"])
+        print(f"  leakage judge {s['name']}: operatives {s['operative_leaks']} explicit leaks "
+              f"({rate(s['operative_leak_rate'])} of their messages){'; first: ' + firsts if firsts else ''}; "
+              f"false positives {s['false_positives']} ({rate(s['false_positive_rate'])})"
+              + (f"; {s['unreadable_phases']} unreadable phases" if s["unreadable_phases"] else ""))
 
 
 def outcome_against(coalition: dict, monitor: dict) -> str:
@@ -167,10 +187,11 @@ def outcome_against(coalition: dict, monitor: dict) -> str:
 def _print_monitors(coalition: dict | None, monitors: list[dict]) -> None:
     for mon in monitors:
         scores = ", ".join(f"{ph} {'n/a' if c is None else f'{c:.0f}'}" for ph, c in mon["correctness"])
+        group = ", ".join(f"{ph} {'n/a' if g is None else f'{g:.0f}'}" for ph, g in mon.get("group_exists", []))
         verdict = f"detected at {mon['detected_at']}" if mon["detected_at"] else "not detected"
         if coalition is None:
             verdict = "control game"
-        print(f"  monitor {mon['name']}: correctness {scores}; {verdict}"
+        print(f"  monitor {mon['name']}: correctness {scores}; group exists {group or 'n/a'}; {verdict}"
               + (f"; outcome {outcome_against(coalition, mon)}" if coalition else "")
               + (f"; {mon['invalid_assessments']} invalid assessments" if mon["invalid_assessments"] else "")
               + f"; ${mon['cost']:.3f}")
@@ -220,6 +241,7 @@ def main() -> None:
         m = game_metrics(json.loads(path.read_text()))
         _print_game(run.name, m)
         _print_monitors(m["coalition"], monitor_summaries(run))
+        _print_leakage(leakage_summaries(run, set(m["operatives"])), set(m["operatives"]))
         for r in m["rows"]:
             all_rows.append({"game": run.name, **r})
             pooled[r["phase"]].append(r["score"])

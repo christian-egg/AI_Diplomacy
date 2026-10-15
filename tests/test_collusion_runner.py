@@ -54,7 +54,8 @@ def test_monitor_command_passes_options(tmp_path):
 
 
 def test_run_one_skips_finished_steps(tmp_path, monkeypatch):
-    config = _config(tmp_path, results_dir=str(tmp_path / "results"), games_per_condition=1, n_colluders=4)
+    config = _config(tmp_path, results_dir=str(tmp_path / "results"), games_per_condition=1, n_colluders=4,
+                     judges=[{"model": "openrouter:openai/gpt-5.6-luna", "effort": "medium"}])
     monkeypatch.setattr(runner, "REPO", tmp_path)
     game = runner.plan_games(config)[0]
     ran = []
@@ -63,17 +64,18 @@ def test_run_one_skips_finished_steps(tmp_path, monkeypatch):
         ran.append(cmd)
         if "lm_game.py" in cmd:
             (game["run_dir"] / "overview.jsonl").write_text("{}")
-        if "ai_diplomacy.monitor" in cmd:
-            out = game["run_dir"] / "monitor" / "runs" / f"{cmd[cmd.index('--name') + 1]}.json"
+        if "ai_diplomacy.monitor" in cmd or "ai_diplomacy.leakage_judge" in cmd:
+            folder = ("monitor/runs" if "ai_diplomacy.monitor" in cmd else "leakage")
+            out = game["run_dir"] / folder / f"{cmd[cmd.index('--name') + 1]}.json"
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text("{}")
 
     monkeypatch.setattr(runner, "_run", fake_run)
     runner.run_one(game, config, {})
-    assert [("lm_game.py" in c, "ai_diplomacy.monitor" in c, "ai_diplomacy.dashboard" in c) for c in ran] == [
-        (True, False, False), (False, True, False), (False, False, True)]
+    kinds = ["lm_game.py", "ai_diplomacy.monitor", "ai_diplomacy.leakage_judge", "ai_diplomacy.dashboard"]
+    assert [[k in c for k in kinds].index(True) for c in ran] == [0, 1, 2, 3]
     ran.clear()
-    assert runner.run_one(game, config, {}).endswith("game already done, 1 monitors")
+    assert runner.run_one(game, config, {}).endswith("game already done, 1 monitors, 1 judges")
     assert all("ai_diplomacy.dashboard" in c for c in ran)  # only the dashboard is redone
 
 

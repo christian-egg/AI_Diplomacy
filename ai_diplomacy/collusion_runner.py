@@ -34,6 +34,7 @@ DEFAULTS = {
     "parallel_games": 1,
     "extra_game_args": [],
     "monitors": [],
+    "judges": [],
     "dashboards": True,
 }
 REQUIRED = ("name", "model", "reasoning_effort", "n_colluders")
@@ -96,6 +97,18 @@ def monitor_cmd(run_dir: Path, monitor: dict) -> list[str]:
     return cmd
 
 
+def judge_name(judge: dict) -> str:
+    return judge.get("name") or f"{model_label(judge['model'])}_{judge.get('effort') or 'default'}"
+
+
+def judge_cmd(run_dir: Path, judge: dict) -> list[str]:
+    cmd = [sys.executable, "-m", "ai_diplomacy.leakage_judge", str(run_dir.relative_to(REPO)),
+           "--model", judge["model"], "--name", judge_name(judge)]
+    if judge.get("effort"):
+        cmd += ["--effort", judge["effort"]]
+    return cmd
+
+
 def game_finished(run_dir: Path) -> bool:
     return (run_dir / "overview.jsonl").exists()  # lm_game writes it only at the very end
 
@@ -121,9 +134,12 @@ def run_one(game: dict, config: dict, env: dict) -> str:
         out = run_dir / "monitor" / "runs" / f"{monitor_name(monitor)}.json"
         if not out.exists():
             _run(monitor_cmd(run_dir, monitor), log, env)
+    for judge in config["judges"]:
+        if not (run_dir / "leakage" / f"{judge_name(judge)}.json").exists():
+            _run(judge_cmd(run_dir, judge), log, env)
     if config["dashboards"]:
         _run([sys.executable, "-m", "ai_diplomacy.dashboard", str(run_dir.relative_to(REPO))], log, env)
-    return f"{run_dir.relative_to(REPO)}: {status}, {len(config['monitors'])} monitors"
+    return f"{run_dir.relative_to(REPO)}: {status}, {len(config['monitors'])} monitors, {len(config['judges'])} judges"
 
 
 def read_env_file(path: Path) -> dict:
@@ -153,6 +169,8 @@ def main() -> None:
             print("    " + " ".join(g["cmd"][1:]))
             for m in config["monitors"]:
                 print("    " + " ".join(monitor_cmd(g["run_dir"], m)[1:]))
+            for j in config["judges"]:
+                print("    " + " ".join(judge_cmd(g["run_dir"], j)[1:]))
     if args.dry_run:
         return
 
@@ -180,9 +198,9 @@ def main() -> None:
             usage = REPO / d / "openrouter_usage.jsonl"
             if usage.exists():
                 total += sum(json.loads(l)["usage"].get("cost") or 0 for l in usage.read_text().splitlines() if l)
-            for mon in (REPO / d / "monitor" / "runs").glob("*.json"):
-                total += (json.loads(mon.read_text()).get("usage") or {}).get("cost", 0)
-        print(f"billed cost of these games and monitors: ${total:.2f}")
+            for extra in [*(REPO / d / "monitor" / "runs").glob("*.json"), *(REPO / d / "leakage").glob("*.json")]:
+                total += (json.loads(extra.read_text()).get("usage") or {}).get("cost", 0)
+        print(f"billed cost of these games, monitors and judges: ${total:.2f}")
     if failures:
         raise SystemExit(f"{len(failures)} games failed")
 

@@ -496,7 +496,10 @@ def _assessment(run: dict, step: dict, heading: str) -> str:
     flag = "<span class='detected'>DETECTED</span>" if run.get("detected_at") == step["through"] else ""
     problems = (f"<div class='problems'>Problems: {esc('; '.join(step['problems']))}</div>"
                 if step.get("problems") else "")
-    return (f"<div class='monitor-block'><b>{heading}</b> · correctness {_correctness(step)}{flag}"
+    group = step.get("group_exists")
+    group_text = f" · group exists: {group:.0f}%" if group is not None else ""
+    late = "" if step.get("counts_for_detection", True) else " · <i>after the draw: cannot count as a detection</i>"
+    return (f"<div class='monitor-block'><b>{heading}</b> · correctness {_correctness(step)}{group_text}{late}{flag}"
             f"{probabilities_table(step)}<div class='sline'><span class='stag'>notes "
             f"({step.get('notes_words', 0)} words)</span>{esc(step.get('notes', ''))}</div>{problems}</div>")
 
