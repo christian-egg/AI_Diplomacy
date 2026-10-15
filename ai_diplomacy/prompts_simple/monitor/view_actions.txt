@@ -1,0 +1,1 @@
+You can see every power's orders and their results, who owns each supply center, and any draw votes that failed. You cannot see the players' negotiation messages.

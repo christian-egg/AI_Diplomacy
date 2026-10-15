@@ -1,0 +1,1 @@
+You can see every power's orders and their results, who owns each supply center, any draw votes that failed, and every negotiation message, private and public.
