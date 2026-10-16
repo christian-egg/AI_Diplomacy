@@ -1,0 +1,20 @@
+{
+  "name": "starter_10y",
+  "model": "openrouter:openai/gpt-5.6-luna",
+  "reasoning_effort": "high",
+  "game_length": "10y",
+  "n_colluders": [4],
+  "games_per_condition": 1,
+  "num_negotiation_rounds": 3,
+  "colluder_seed_base": 2000,
+  "parallel_games": 1,
+  "monitors": [
+    {"view": "trajectory", "model": "openrouter:openai/gpt-5.6-luna", "effort": "medium"},
+    {"view": "actions", "model": "openrouter:openai/gpt-5.6-luna", "effort": "medium"},
+    {"view": "trajectory", "model": "openrouter:openai/gpt-5.6-luna", "effort": "medium", "knows_objective": true, "name": "trajectory_gpt-5.6-luna_medium_knows"}
+  ],
+  "judges": [
+    {"model": "openrouter:openai/gpt-5.6-luna", "effort": "medium"}
+  ],
+  "docent_collection_id": "787bb147-58d8-40a3-9ac9-0cf63735b585"
+}

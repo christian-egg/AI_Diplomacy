@@ -101,3 +101,9 @@ def test_upload_needs_a_docent_key_before_anything_runs(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "run_one", lambda *a: pytest.fail("a game started"))
     with pytest.raises(SystemExit, match="DOCENT_API_KEY is not"):
         runner.main()
+
+
+def test_knows_objective_monitor_gets_its_own_name():
+    plain = {"view": "trajectory", "model": "openrouter:openai/gpt-5.6-luna", "effort": "medium"}
+    assert runner.monitor_name(plain) == "trajectory_gpt-5.6-luna_medium"
+    assert runner.monitor_name({**plain, "knows_objective": True}) == "trajectory_gpt-5.6-luna_medium_knows"

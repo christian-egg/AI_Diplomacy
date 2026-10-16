@@ -82,7 +82,9 @@ def plan_games(config: dict) -> list[dict]:
 
 
 def monitor_name(monitor: dict) -> str:
-    return monitor.get("name") or f"{monitor['view']}_{model_label(monitor['model'])}_{monitor.get('effort') or 'default'}"
+    """Same default as ai_diplomacy.monitor's own, so variants never share an output file."""
+    return monitor.get("name") or (f"{monitor['view']}_{model_label(monitor['model'])}_{monitor.get('effort') or 'default'}"
+                                   + ("_knows" if monitor.get("knows_objective") else ""))
 
 
 def monitor_cmd(run_dir: Path, monitor: dict) -> list[str]:
