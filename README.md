@@ -1,4 +1,4 @@
-> **This is the `collusion` branch of [christian-egg/AI_Diplomacy](https://github.com/christian-egg/AI_Diplomacy),
+> **This is [christian-egg/AI_Diplomacy](https://github.com/christian-egg/AI_Diplomacy),
 > a fork of GoodStartLabs' AI_Diplomacy with a hidden-objective (collusion) game, operative
 > scratchpads, draw votes, a post-hoc monitor, metrics and a transcript viewer.
 > Start with [COLLUSION.md](COLLUSION.md).** The rest of this README is upstream's.

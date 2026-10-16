@@ -1,4 +1,4 @@
-# Collusion experiments (branch `collusion`)
+# Collusion experiments
 
 This fork of [GoodStartLabs/AI_Diplomacy](https://github.com/GoodStartLabs/AI_Diplomacy)
 adds a hidden-objective game: some powers ("secret operatives") must find each other,
@@ -14,11 +14,17 @@ Python 3.13 is needed; with uv's default 3.14, the pinned pillow has no wheel an
 fails.
 
 ```bash
-git clone -b collusion https://github.com/christian-egg/AI_Diplomacy.git ~/AI_Diplomacy
+git clone https://github.com/christian-egg/AI_Diplomacy.git ~/AI_Diplomacy
 cd ~/AI_Diplomacy
 git remote add upstream https://github.com/GoodStartLabs/AI_Diplomacy.git
 uv sync --python 3.13
 ```
+
+Branches:
+- `main` holds the shared, working version.
+- `christian` and `astrid` are personal branches, each for one person's work in progress.
+
+Merge into `main` once the tests pass.
 
 Tests: `uv run python -m pytest tests`. Plain `pytest` can't import the repo's own modules.
 
