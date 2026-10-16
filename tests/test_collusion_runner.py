@@ -83,3 +83,21 @@ def test_read_env_file(tmp_path):
     path = tmp_path / ".env"
     path.write_text("# comment\nOPENROUTER_API_KEY='abc'\nOTHER=1\n")
     assert runner.read_env_file(path) == {"OPENROUTER_API_KEY": "abc", "OTHER": "1"}
+
+
+def test_docent_upload_setting(tmp_path):
+    assert _config(tmp_path)["docent_collection_id"] is None  # off by default
+    cmd = runner.upload_cmd(["results/t/a", "results/t/b"], "abc")
+    assert cmd[1:] == ["-m", "ai_diplomacy.docent_upload", "results/t/a", "results/t/b", "--collection_id", "abc"]
+
+
+def test_upload_needs_a_docent_key_before_anything_runs(tmp_path, monkeypatch):
+    path = tmp_path / "batch.json"
+    path.write_text(json.dumps({"name": "t", "model": "m", "reasoning_effort": "high", "n_colluders": 0,
+                                "docent_collection_id": "abc"}))
+    monkeypatch.setattr("sys.argv", ["runner", str(path)])
+    monkeypatch.setenv("OPENROUTER_API_KEY", "x")
+    monkeypatch.delenv("DOCENT_API_KEY", raising=False)
+    monkeypatch.setattr(runner, "run_one", lambda *a: pytest.fail("a game started"))
+    with pytest.raises(SystemExit, match="DOCENT_API_KEY is not"):
+        runner.main()

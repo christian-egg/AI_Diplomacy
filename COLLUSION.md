@@ -26,7 +26,7 @@ Tests: `uv run python -m pytest tests`. Plain `pytest` can't import the repo's o
 
 A batch is described by a JSON file in `collusion_configs/`. The runner plays every game,
 then runs the configured monitors on each game and renders its dashboard. At the end it
-prints the collusion metrics and the billed cost.
+prints the collusion metrics and the billed cost, then uploads to Docent if the config names a collection.
 
 ```bash
 cd ~/AI_Diplomacy
@@ -52,6 +52,7 @@ half-played game resumes from its last saved phase.
 | `monitors` | `[]` | monitor runs per game, each `{"view", "model", "effort", ...}` plus any monitor option, e.g. `"turns_per_step": 1`, `"knows_objective": true` or `"stop_on_detection": true` |
 | `judges` | `[]` | leakage-judge runs per game, each `{"model", "effort"}` |
 | `dashboards` | `true` | render each game's dashboard |
+| `docent_collection_id` | none | after the batch, upload its finished games (with their monitor and judge runs) to this Docent collection; needs `DOCENT_API_KEY`, checked before any game starts. The team collection is `787bb147-58d8-40a3-9ac9-0cf63735b585` |
 | `extra_game_args` | `[]` | further `lm_game.py` arguments |
 
 Each game's console output goes to `<game>/runner.log`.

@@ -11,7 +11,9 @@ monitors to <game>/monitor/runs/.
 Each step is skipped if it already finished (a game whose overview.jsonl exists, a monitor
 whose output file exists), so an interrupted batch can be rerun with the same command; a
 half-played game resumes from its last saved phase. Games run "parallel_games" at a time.
-At the end the runner prints the collusion metrics and the billed cost of the batch.
+At the end the runner prints the collusion metrics and the billed cost of the batch, and,
+if the config has a "docent_collection_id", uploads the finished games with their monitor
+and judge runs to that Docent collection (receipts mean only new runs are uploaded).
 """
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ DEFAULTS = {
     "monitors": [],
     "judges": [],
     "dashboards": True,
+    "docent_collection_id": None,
 }
 REQUIRED = ("name", "model", "reasoning_effort", "n_colluders")
 
@@ -109,6 +112,10 @@ def judge_cmd(run_dir: Path, judge: dict) -> list[str]:
     return cmd
 
 
+def upload_cmd(run_dirs: list[str], collection_id: str) -> list[str]:
+    return [sys.executable, "-m", "ai_diplomacy.docent_upload", *run_dirs, "--collection_id", collection_id]
+
+
 def game_finished(run_dir: Path) -> bool:
     return (run_dir / "overview.jsonl").exists()  # lm_game writes it only at the very end
 
@@ -171,12 +178,16 @@ def main() -> None:
                 print("    " + " ".join(monitor_cmd(g["run_dir"], m)[1:]))
             for j in config["judges"]:
                 print("    " + " ".join(judge_cmd(g["run_dir"], j)[1:]))
+    if config["docent_collection_id"]:
+        print(f"then upload finished games to Docent collection {config['docent_collection_id']}")
     if args.dry_run:
         return
 
     env = {**(read_env_file(args.env_file) if args.env_file else {}), **os.environ}
     if not env.get("OPENROUTER_API_KEY"):
         raise SystemExit("OPENROUTER_API_KEY is not set (use --env_file or export it)")
+    if config["docent_collection_id"] and not env.get("DOCENT_API_KEY"):  # fail before spending anything
+        raise SystemExit("docent_collection_id is set but DOCENT_API_KEY is not (use --env_file or export it)")
     env.pop("OPENROUTER_REASONING_EFFORT", None)  # each game gets its effort from the config
 
     failures = []
@@ -201,8 +212,15 @@ def main() -> None:
             for extra in [*(REPO / d / "monitor" / "runs").glob("*.json"), *(REPO / d / "leakage").glob("*.json")]:
                 total += (json.loads(extra.read_text()).get("usage") or {}).get("cost", 0)
         print(f"billed cost of these games, monitors and judges: ${total:.2f}")
-    if failures:
-        raise SystemExit(f"{len(failures)} games failed")
+    upload_failed = False
+    if run_dirs and config["docent_collection_id"]:
+        print(f"uploading {len(run_dirs)} games to Docent collection {config['docent_collection_id']}")
+        upload = subprocess.run(upload_cmd(run_dirs, config["docent_collection_id"]), cwd=REPO, env=env)
+        upload_failed = upload.returncode != 0
+        if upload_failed:  # the games are safe on disk; rerun the batch (or docent_upload) to retry
+            print("Docent upload FAILED; rerun the same command to retry (finished steps are skipped)")
+    if failures or upload_failed:
+        raise SystemExit(f"{len(failures)} games failed" + ("; Docent upload failed" if upload_failed else ""))
 
 
 if __name__ == "__main__":
