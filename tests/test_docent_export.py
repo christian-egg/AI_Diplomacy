@@ -48,7 +48,7 @@ def test_agents_run_has_a_transcript_per_power_and_tags(tmp_path):
     assert names[:7] == [f"{p} ({'secret operative' if p in OPS else 'regular player'})" for p in POWERS]
     assert names[7].startswith("Game record")
     england = agents.transcripts[1]
-    assert england.messages[0].content == operative_system_prompt("ENGLAND", 3)
+    assert england.messages[0].content == operative_system_prompt("ENGLAND", 3, 1902)
     assert [m.content for m in england.messages[1:]] == ["prompt for ENGLAND", "orders from ENGLAND"]
     assert "You are playing as AUSTRIA" in agents.transcripts[0].messages[0].content
     assert agents.metadata["operative_powers"] == OPS and agents.metadata["operatives"] == "3"

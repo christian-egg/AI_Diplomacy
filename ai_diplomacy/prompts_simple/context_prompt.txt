@@ -2,6 +2,7 @@ Your power is {power_name}. The {current_phase} phase.
 
 Power: {power_name}
 Phase: {current_phase}
+{game_end}
 
 # Your Power's Home Centers
 {home_centers}

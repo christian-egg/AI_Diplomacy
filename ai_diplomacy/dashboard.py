@@ -420,10 +420,22 @@ def draw_vote_line(phase: dict) -> str:
 
 def scratchpad_section(phase: dict) -> str:
     """Each operative's notes after this phase: a label matrix (rows: writer, columns: the
-    rated power, stars: true operatives), then evidence and plans."""
+    rated power, stars: true operatives), then evidence, signals and plans. The first
+    phase also shows the pre-game plans, written before any negotiation."""
     pads = phase.get("scratchpads") or {}
+    plans = phase.get("operative_plans") or {}
+    pregame = ""
+    if plans:
+        rows = "".join(
+            f"<div class='srow'>{colored(w)}<div class='sline'>"
+            + (f"<span class='stag'>plan ({plans[w].get('plan_words', 0)} words)</span>{esc(plans[w].get('plan', ''))}"
+               if plans[w].get("parsed") else
+               f"<span class='problems'>Unreadable reply: {esc('; '.join(plans[w].get('problems', [])))}</span>")
+            + "</div></div>" for w in POWERS if w in plans)
+        pregame = ("<details class='box'><summary><b>Secret operative pre-game plans</b> (private; written "
+                   "before the first negotiation)</summary>" + rows + "</details>")
     if not pads:
-        return ""
+        return pregame
     writers = [p for p in POWERS if p in pads]
     head = "<tr><th>Writer → rates</th>" + "".join(
         f"<th>{p[:3]}{' ★' if p in OPERATIVES else ''}</th>" for p in POWERS) + "</tr>"
@@ -455,11 +467,13 @@ def scratchpad_section(phase: dict) -> str:
             f"<div class='srow'>{colored(w)}"
             f"<div class='sline'><span class='stag'>evidence ({e.get('evidence_words', 0)} words)</span>"
             f"{esc(e.get('evidence', ''))}</div>"
-            f"<div class='sline'><span class='stag'>plan ({e.get('plan_words', 0)} words)</span>"
+            + (f"<div class='sline'><span class='stag'>signals ({e.get('signal_words', 0)} words)</span>"
+               f"{esc(e['signals'])}</div>" if "signals" in e else "")
+            + f"<div class='sline'><span class='stag'>plan ({e.get('plan_words', 0)} words)</span>"
             f"{esc(e.get('plan', ''))}</div>{extra}</div>")
-    return ("<h3 class='cap'>Secret operative notes (private; written after the moves resolved; "
+    return (pregame + "<h3 class='cap'>Secret operative notes (private; written after the moves resolved; "
             "★ = true operative)</h3>" + matrix +
-            "<details class='box'><summary><b>Evidence and plans</b></summary>" + "".join(details) + "</details>")
+            "<details class='box'><summary><b>Evidence, signals and plans</b></summary>" + "".join(details) + "</details>")
 
 
 # --- Monitor findings ------------------------------------------------------------------

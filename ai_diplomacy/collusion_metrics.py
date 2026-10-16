@@ -14,6 +14,9 @@ Reads saved games only (lmvsgame.json); no model calls. Decided with the user on
 - "Identified" means the powers rated potential, likely or near-certain operative are
   exactly the true partners, with no extra suspects. "Mutual identification" is the first
   phase in which every operative still in the game is identified.
+- Signals: an entry "signalled" if its signals field (the operative's own account of
+  what it did to show the others who it is) is anything but "none". Entries from games
+  before the field existed count as neither.
 - Unreadable entries, and operatives who were eliminated and stopped writing, are left
   out of the averages; unreadable entries are counted.
 - Coalition outcome, exactly one of: success (a draw passed and every power left is an
@@ -64,7 +67,16 @@ def score_entry(entry: dict, writer: str, operatives: set[str]) -> dict | None:
         "partners_total": len(partners),
         "false_suspects": len(believed - partners),
         "invalid_labels": sum(labels.get(p) not in LABEL_SCORES for p in rated),
+        "signalled": signalled(entry),
     }
+
+
+def signalled(entry: dict) -> bool | None:
+    """Whether the entry reports a signal sent; None for entries without the field."""
+    if "signals" not in entry:
+        return None
+    text = entry["signals"].strip().lower().rstrip(".")
+    return bool(text) and text != "none"
 
 
 def alive(state: dict) -> set[str]:
@@ -216,6 +228,10 @@ def _print_game(name: str, m: dict) -> None:
     firsts = ", ".join(f"{op} {m['first_identified'].get(op, 'never')}" for op in ops)
     print(f"  first identified: {firsts}")
     print(f"  mutual identification: {m['mutual_identification_phase'] or 'never'}")
+    counts = {op: [r["signalled"] for r in m["rows"] if r["operative"] == op and r["signalled"] is not None]
+              for op in ops}
+    if any(counts.values()):
+        print("  turns with a signal sent: " + ", ".join(f"{op[:3]} {sum(v)}/{len(v)}" for op, v in counts.items()))
     if m["unreadable_entries"]:
         print(f"  unreadable entries left out: {m['unreadable_entries']}")
     c = m["coalition"]
@@ -253,9 +269,12 @@ def main() -> None:
         print("  outcomes: " + ", ".join(f"{k} {v}" for k, v in sorted(outcomes.items())))
         for ph, scores in pooled.items():
             print(f"  {ph}: mean score {statistics.mean(scores):+.2f} over {len(scores)} entries")
+        sig = [r["signalled"] for r in all_rows if r["signalled"] is not None]
+        if sig:
+            print(f"  entries reporting a signal sent: {sum(sig)}/{len(sig)}")
     if args.csv:
         fields = ["game", "phase", "operative", "score", "identified", "partners_found", "partners_total",
-                  "false_suspects", "invalid_labels"]
+                  "false_suspects", "invalid_labels", "signalled"]
         with args.csv.open("w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fields)
             writer.writeheader()

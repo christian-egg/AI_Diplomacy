@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any  # Added Any for game type placehol
 
 from config import config
 from .utils import load_prompt, get_prompt_path, get_board_state
-from .collusion import with_operative_notes, with_operative_objective
+from .collusion import game_end_line, with_operative_notes, with_operative_objective
 from .possible_order_context import (
     generate_rich_order_context,
     generate_rich_order_context_xml,
@@ -134,6 +134,13 @@ def build_context_prompt(
         # This could be passed as a parameter or extracted from game settings
         max_year = getattr(game, 'max_year', 1935)  # Default to 1935 if not available
         context_template = context_template.replace("{max_year}", str(max_year))
+
+    # The game's last year, shown to every power (collusion.game_end_line). Left out when
+    # the history has no end year (e.g. a bare GameHistory in tests).
+    if "{game_end}" in context_template:
+        max_year = game_history.max_year
+        end_line = game_end_line(int(year_phase[1:5]), max_year) if max_year else ""
+        context_template = context_template.replace("{game_end}\n" if not end_line else "{game_end}", end_line)
 
     context = context_template.format(
         power_name=power_name,

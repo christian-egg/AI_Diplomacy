@@ -37,6 +37,8 @@ class Phase:
     draw_passed: bool = False
     # Movement phases only: each operative's scratchpad entry (collusion.parse_scratchpad).
     scratchpads: Dict[str, dict] = field(default_factory=dict)
+    # First phase only: each operative's pre-game plan (collusion.parse_pregame_plan).
+    operative_plans: Dict[str, dict] = field(default_factory=dict)
 
     def add_plan(self, power_name: str, plan: str):
         self.plans[power_name] = plan
@@ -89,6 +91,9 @@ class Phase:
 @dataclass
 class GameHistory:
     phases: List[Phase] = field(default_factory=list)
+    # The game's last year, for the game-end line in every power's context. Set by
+    # game_logic for new and resumed games; None leaves the line out.
+    max_year: Optional[int] = None
 
     def add_phase(self, phase_name: str):
         # Avoid adding duplicate phases

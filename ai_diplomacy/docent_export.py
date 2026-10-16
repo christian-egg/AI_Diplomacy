@@ -26,14 +26,14 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional
 
-from .collusion import POWERS, operative_system_prompt
+from .collusion import GAME_LENGTHS, POWERS, operative_system_prompt
 from .dashboard import load_invalid_orders
 from .monitor_export import export_game
 
 EXPORT_SCHEMA = "ai-diplomacy-docent/v1"
 REPO = Path(__file__).resolve().parent.parent
 PROMPTS_SIMPLE = Path(__file__).resolve().parent / "prompts_simple"
-LENGTH_BY_YEAR = {1902: "2y", 1910: "10y", 1925: "25y"}
+LENGTH_BY_YEAR = {year: name for name, year in GAME_LENGTHS.items()}
 
 
 # --- Settings and tags ------------------------------------------------------------------
@@ -96,9 +96,14 @@ def _metadata(tags: dict, **fields) -> dict:
 
 # --- Agents --------------------------------------------------------------------------
 
-def _system_prompt(power: str, operatives: set, settings: dict) -> str:
+def _system_prompt(power: str, operatives: set, settings: dict, saved: dict) -> str:
+    """The saved system prompt, or for games saved before it was, a rebuild from the
+    current templates (right only if the templates haven't changed since)."""
+    if saved.get(power):
+        return saved[power]
     if power in operatives:
-        return operative_system_prompt(power, len(operatives), bool(settings.get("monitor_in_prompt")))
+        return operative_system_prompt(power, len(operatives), settings.get("max_year") or 1925,
+                                       bool(settings.get("monitor_in_prompt")))
     return (PROMPTS_SIMPLE / f"{power.lower()}_system_prompt.txt").read_text(encoding="utf-8").strip()
 
 
@@ -127,7 +132,7 @@ def agents_run(run_dir: Path):
     for power in POWERS:
         calls = [r for r in rows if r["power"] == power]
         model = (settings.get("models") or {}).get(power)
-        messages = [parse_chat_message({"role": "system", "content": _system_prompt(power, operatives, settings),
+        messages = [parse_chat_message({"role": "system", "content": _system_prompt(power, operatives, settings, game.get("system_prompts") or {}),
                                         "metadata": {"provenance": "system prompt, rebuilt from the prompt files"}})]
         for i, r in enumerate(calls):
             meta = {"call_index": i, "phase": r["phase"], "response_type": r["response_type"],
