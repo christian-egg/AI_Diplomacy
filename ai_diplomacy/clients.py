@@ -386,7 +386,7 @@ class BaseModelClient:
         # Fill missing with hold
         for loc, orders_list in possible_orders.items():
             if loc not in used_locs and orders_list:
-                hold_candidates = [o for o in orders_list if o.endswith("H")]
+                hold_candidates = [o for o in orders_list if o.endswith(" H")]
                 validated.append(hold_candidates[0] if hold_candidates else orders_list[0])
 
         if not validated and not invalid_moves_found:  # Only if LLM provided no valid moves and no invalid moves (e.g. empty list from LLM)
@@ -409,7 +409,7 @@ class BaseModelClient:
         fallback = []
         for loc, orders_list in possible_orders.items():
             if orders_list:
-                holds = [o for o in orders_list if o.endswith("H")]
+                holds = [o for o in orders_list if o.endswith(" H")]
                 fallback.append(holds[0] if holds else orders_list[0])
         return fallback
 

@@ -122,8 +122,8 @@ def get_unit_at_location(board_state: BoardState, location: str) -> Optional[str
             parts = unit_str.split(" ")
             if len(parts) == 2:
                 unit_map_loc = parts[1]
-                if unit_map_loc == location:
-                    return f"{parts[0]} {location} ({power})"
+                if unit_map_loc.split("/")[0] == location.split("/")[0]:
+                    return f"{parts[0]} {unit_map_loc} ({power})"
     return None
 
 
