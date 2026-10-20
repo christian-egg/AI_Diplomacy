@@ -125,6 +125,19 @@ def parse_arguments():
         help="Seed for choosing the colluders. If omitted, one is drawn and saved with the game.",
     )
     parser.add_argument(
+        "--colluders",
+        dest="colluders_chosen",
+        default=None,
+        help="Comma-separated powers to make the operatives, instead of drawing them "
+             "(used by the lineage runner; needs a matching --n_colluders and no --colluder_seed).",
+    )
+    parser.add_argument(
+        "--operative_notes",
+        default=None,
+        help="JSON file of {power: note}: each operative's note from its earlier games, "
+             "shown in its system prompt (written by the lineage runner).",
+    )
+    parser.add_argument(
         "--monitor_in_prompt",
         type=_str2bool,
         nargs="?",
@@ -373,7 +386,15 @@ async def main():
         args.colluder_seed, args.colluders = resolve_colluders(
             args.n_colluders, args.colluder_seed,
             read_saved_collusion(game_file_path) if is_resuming else None,
+            args.colluders_chosen.split(",") if args.colluders_chosen else None,
         )
+        args.previous_notes = {}
+        if args.operative_notes:
+            with open(args.operative_notes, "r", encoding="utf-8") as f:
+                args.previous_notes = {p.upper(): n for p, n in json.load(f).items() if n}
+            if not set(args.previous_notes) <= set(args.colluders):
+                raise ValueError(f"--operative_notes has notes for non-operatives: "
+                                 f"{sorted(set(args.previous_notes) - set(args.colluders))}")
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)

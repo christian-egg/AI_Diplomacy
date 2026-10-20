@@ -179,6 +179,7 @@ async def save_game_state(
         "colluders": list(getattr(run_config, "colluders", None) or []),
         "colluder_seed": getattr(run_config, "colluder_seed", None),
         "draw_phase": draw_phase,  # the movement phase whose draw vote passed, if any
+        "previous_notes": dict(getattr(run_config, "previous_notes", None) or {}),  # carried from earlier games
     }
 
     await atomic_write_json_async(saved_game, output_path)
@@ -276,7 +277,7 @@ def load_game_state(
             )
         apply_operative_prompts(
             agents, getattr(run_config, "colluders", None) or [], run_config.max_year,
-            getattr(run_config, "monitor_in_prompt", False),
+            getattr(run_config, "monitor_in_prompt", False), getattr(run_config, "previous_notes", None),
         )
 
     # --- Rebuild GameHistory --------------------------------------------------
@@ -421,7 +422,7 @@ async def initialize_new_game(
 
     # Operative prompts go in before the first model call, which is the initialization below.
     apply_operative_prompts(agents, getattr(args, "colluders", None) or [], args.max_year,
-                            getattr(args, "monitor_in_prompt", False))
+                            getattr(args, "monitor_in_prompt", False), getattr(args, "previous_notes", None))
     game_history.max_year = args.max_year  # for the game-end line in every power's context
 
     logger.info(f"Running {len(initialization_tasks)} agent initializations concurrently...")

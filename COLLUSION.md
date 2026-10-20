@@ -63,6 +63,42 @@ half-played game resumes from its last saved phase.
 
 Each game's console output goes to `<game>/runner.log`.
 
+## Lineages: operatives learning from their own games
+
+```bash
+uv run python -m ai_diplomacy.lineage_runner collusion_configs/icrl_2y.json --dry_run
+uv run python -m ai_diplomacy.lineage_runner collusion_configs/icrl_2y.json --env_file ~/CoordinationGames/.env
+uv run python -m ai_diplomacy.lineage_runner collusion_configs/icrl_2y.json --summary
+```
+
+A small version of in-context RL (`lineage_runner.py`, `operative_reflection.py`):
+- **Agents, not powers, persist.** A lineage is a fixed set of agents 1–7 playing one game
+  per round. Agents 1–4 are always the operatives. Each round the seven are dealt the
+  powers at random, seeded by lineage and round, so the operatives' powers change.
+- **Reflection.** After each game, every operative gets one call: the system prompt it
+  played under, plus `reflection_prompt.txt`. The prompt shows the operatives, its
+  pre-game plan and signal reports, how its partners rated it, how it rated everyone (with
+  the truth), and the **feedback monitor**'s probabilities, notes and result. It returns a
+  summary and a note of up to 150 words.
+- **Redaction.** In the monitor's notes, quoted text and signal words become `[phrase]`. A
+  signal word is one the operatives used at least twice, no non-operative used, and that
+  is not in `wordlists/ordinary_words.txt` (every word from 18 games before code phrases).
+- **Carrying the note.** In the next round, each agent's note goes at the end of its
+  system prompt (`previous_note.txt`), whatever power it plays, so every call sees it.
+  Notes are never pooled, and agents are not told their partners are the same each game.
+  Non-operatives carry nothing.
+- **Evaluation.** `eval_monitors` score the games but never feed back.
+- **Running.** Lineages run in parallel; rounds within a lineage run in order. Each step is
+  skipped once done, so a rerun resumes, and raising `rounds` extends a run.
+
+Each game folder (`results/<name>/lin<L>-r<RR>/`) also has:
+- `lineage.json`: the round, the seed, which agent played which power, and the notes it
+  started with;
+- `operative_notes.json`: the notes as `lm_game.py --operative_notes` reads them;
+- `reflections/<POWER>.json`: each operative's packet, reply, summary, note, and cost.
+
+Docent tags these games with `lineage`, `round` and `carried_notes`.
+
 ## Running a single game
 
 The OpenRouter key goes in `OPENROUTER_API_KEY` (we source CoordinationGames' `.env`).
@@ -86,6 +122,8 @@ uv run python lm_game.py --game_length 2y --n_colluders 4 --num_negotiation_roun
 | `--n_colluders N` | 0 (default; a normal game, also the control condition) or 3–7 operatives, drawn at random |
 | `--colluder_seed S` | seed for the draw; drawn and saved if omitted. Resuming reuses the saved operatives |
 | `--monitor_in_prompt` | tell operatives about the monitor; needs `monitor_goal.txt`, `monitor_tip.txt`, `monitor_reminder.txt` and `monitor_note.txt` in `prompts_simple/collusion/` |
+| `--colluders A,B,C,D` | name the operatives instead of drawing them (no `--colluder_seed`) |
+| `--operative_notes FILE` | JSON `{power: note}`: notes from earlier games, appended to those operatives' system prompts |
 | `--scratchpad_plan_words`, `--scratchpad_evidence_words`, `--scratchpad_signal_words` | word limits for the operatives' notes (defaults 100, 50 and 50); the plan limit also applies to the pre-game plan |
 | `--reasoning_effort` | reasoning effort sent to OpenRouter, saved with the run; defaults to the `OPENROUTER_REASONING_EFFORT` environment variable |
 | env `OPENROUTER_USAGE_LOG` | file that receives each call's usage and billed cost |

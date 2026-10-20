@@ -71,7 +71,11 @@ def game_settings(run_dir: Path, game: dict) -> dict:
 def game_tags(run_dir: Path, settings: dict) -> dict:
     labels = sorted({_model_label(m) for m in (settings.get("models") or {}).values()})
     batch = run_dir.parent.name if run_dir.parent.name != "results" else "none"
-    return {
+    lineage_path = run_dir / "lineage.json"  # games played by the lineage runner
+    lineage = json.loads(lineage_path.read_text()) if lineage_path.exists() else None
+    extra = ({"lineage": str(lineage["lineage"]), "round": str(lineage["round"]),
+              "carried_notes": str(bool(lineage.get("notes"))).lower()} if lineage else {})
+    return {**extra,
         "model": labels[0] if len(labels) == 1 else ("mixed" if labels else "unknown"),
         "effort": settings.get("reasoning_effort") or "unknown",
         "game_length": settings["game_length"],

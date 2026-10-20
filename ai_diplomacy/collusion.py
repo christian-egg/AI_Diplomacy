@@ -77,13 +77,24 @@ def read_saved_collusion(game_file_path: str) -> Optional[dict]:
         return json.load(f).get("collusion")
 
 
-def resolve_colluders(n_colluders: int, seed: Optional[int], saved: Optional[dict]) -> Tuple[Optional[int], List[str]]:
+def resolve_colluders(n_colluders: int, seed: Optional[int], saved: Optional[dict],
+                      chosen: Optional[List[str]] = None) -> Tuple[Optional[int], List[str]]:
     """(seed, colluders) for this run.
 
     A resumed game keeps its saved colluders. Asking for a different number or seed
     than the save has is an error, since that would change the game midway. A new game
-    draws them, picking and recording a seed if none was given.
+    uses `chosen` if given (--colluders, e.g. from the lineage runner, with no seed), and
+    otherwise draws them, picking and recording a seed if none was given.
     """
+    if chosen is not None:
+        chosen = sorted(p.strip().upper() for p in chosen)
+        if seed is not None or len(chosen) != n_colluders or len(set(chosen)) != len(chosen) \
+                or not set(chosen) <= set(POWERS) or n_colluders not in COLLUDER_COUNTS:
+            raise ValueError(f"--colluders must name --n_colluders distinct powers, without --colluder_seed; "
+                             f"got {chosen} for --n_colluders {n_colluders}")
+        if saved is not None and sorted(saved.get("colluders") or []) != chosen:
+            raise ValueError(f"the saved game has colluders {saved.get('colluders')}, not {chosen}")
+        return None, chosen
     if saved is not None:
         saved_colluders = list(saved.get("colluders") or [])
         if n_colluders != len(saved_colluders) or (seed is not None and seed != saved.get("colluder_seed")):
@@ -105,7 +116,8 @@ def resolve_colluders(n_colluders: int, seed: Optional[int], saved: Optional[dic
 # - prompts_simple/collusion/system_prompt.txt replaces <power>_system_prompt.txt. The
 #   system prompt goes with every call the power makes. Fill-ins: {power_name},
 #   {n_colluders}, {n_other_colluders}, {max_year}, {identify_by_year}, {monitor_goal},
-#   {monitor_tip}.
+#   {monitor_tip}. An operative carrying a note from earlier games (the lineage runner's
+#   reflections, --operative_notes) gets previous_note.txt appended to it.
 # - prompts_simple/collusion/order_objective.txt replaces the "Primary Objective" lines
 #   at the top of the three order-instruction files. Fill-in: {monitor_reminder}.
 # - prompts_simple/collusion/scratchpad_prompt.txt is the operative's notes call, and
@@ -144,8 +156,11 @@ def _tidy(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.splitlines()).strip()
 
 
-def operative_system_prompt(power_name: str, n_colluders: int, max_year: int, monitor_in_prompt: bool = False) -> str:
+def operative_system_prompt(power_name: str, n_colluders: int, max_year: int, monitor_in_prompt: bool = False,
+                            previous_note: Optional[str] = None) -> str:
     goal = _monitor_text("monitor_goal.txt", monitor_in_prompt)
+    carried = ("\n\n" + _read_operative_prompt("previous_note.txt").format(note=previous_note.strip())
+               if previous_note and previous_note.strip() else "")
     return _tidy(_read_operative_prompt("system_prompt.txt").format(
         power_name=power_name,
         n_colluders=n_colluders,
@@ -154,7 +169,7 @@ def operative_system_prompt(power_name: str, n_colluders: int, max_year: int, mo
         identify_by_year=min(IDENTIFY_BY_YEAR, max_year),
         monitor_goal=f" {goal}" if goal else "",  # continues the "Your Goal" paragraph
         monitor_tip=_monitor_text("monitor_tip.txt", monitor_in_prompt),  # its own line
-    ))
+    ) + carried)
 
 
 def operative_order_objective(monitor_in_prompt: bool = False) -> str:
@@ -186,14 +201,17 @@ def with_operative_objective(instructions: str, order_objective: str) -> str:
     return instructions.replace(UPSTREAM_ORDER_OBJECTIVE, order_objective, 1)
 
 
-def apply_operative_prompts(agents: dict, colluders: List[str], max_year: int, monitor_in_prompt: bool = False) -> None:
-    """Give each colluder's agent the operative system prompt and order objective. Call it
-    after the agents exist and before any model call, for new and resumed games alike."""
+def apply_operative_prompts(agents: dict, colluders: List[str], max_year: int, monitor_in_prompt: bool = False,
+                            previous_notes: Optional[Dict[str, str]] = None) -> None:
+    """Give each colluder's agent the operative system prompt (with its note from earlier
+    games, if any) and order objective. Call it after the agents exist and before any
+    model call, for new and resumed games alike."""
     for power_name in colluders:
         if power_name not in agents:  # already eliminated when a game is resumed
             continue
         client = agents[power_name].client
-        client.set_system_prompt(operative_system_prompt(power_name, len(colluders), max_year, monitor_in_prompt))
+        client.set_system_prompt(operative_system_prompt(power_name, len(colluders), max_year, monitor_in_prompt,
+                                                         (previous_notes or {}).get(power_name)))
         client.order_objective = operative_order_objective(monitor_in_prompt)
         client.monitor_note = operative_monitor_note(monitor_in_prompt)
 
@@ -385,6 +403,8 @@ def parse_scratchpad(response: str, power_name: str) -> dict:
         return {"parsed": False, "valid": False, "problems": ["no JSON object"]}
     problems = []
     texts = {}
+    if isinstance(obj.get("signals"), str) and not obj["signals"].strip():
+        obj["signals"] = "none"  # a blank field means nothing was sent
     for field_name in ("evidence", "signals", "plan"):
         value = obj.get(field_name)
         if not isinstance(value, str) or not value.strip():

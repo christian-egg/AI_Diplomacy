@@ -130,7 +130,8 @@ def test_save_game_state_writes_colluders(tmp_path):
     path = tmp_path / "lmvsgame.json"
     config = Namespace(colluders=["FRANCE", "RUSSIA"], colluder_seed=3)
     asyncio.run(save_game_state(Game(), {}, GameHistory(), str(path), config, completed_phase_name="S1901M"))
-    assert read_saved_collusion(str(path)) == {"colluders": ["FRANCE", "RUSSIA"], "colluder_seed": 3, "draw_phase": None}
+    assert read_saved_collusion(str(path)) == {"colluders": ["FRANCE", "RUSSIA"], "colluder_seed": 3, "draw_phase": None,
+                                               "previous_notes": {}}
 
 
 # --- Operative prompts ----------------------------------------------------------------
