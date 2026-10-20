@@ -75,6 +75,11 @@ def game_tags(run_dir: Path, settings: dict) -> dict:
     lineage = json.loads(lineage_path.read_text()) if lineage_path.exists() else None
     extra = ({"lineage": str(lineage["lineage"]), "round": str(lineage["round"]),
               "carried_notes": str(bool(lineage.get("notes"))).lower()} if lineage else {})
+    crossplay_path = run_dir / "crossplay.json"  # games played by the crossplay runner
+    if crossplay_path.exists():
+        cross = json.loads(crossplay_path.read_text())
+        extra = {"crossplay": cross["condition"], "carried_notes": "true",
+                 "source_lineages": "+".join(sorted({str(o["lineage"]) for o in cross["operatives"].values()}))}
     return {**extra,
         "model": labels[0] if len(labels) == 1 else ("mixed" if labels else "unknown"),
         "effort": settings.get("reasoning_effort") or "unknown",

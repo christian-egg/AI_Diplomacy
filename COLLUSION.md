@@ -99,6 +99,28 @@ Each game folder (`results/<name>/lin<L>-r<RR>/`) also has:
 
 Docent tags these games with `lineage`, `round` and `carried_notes`.
 
+### Cross-lineage test
+
+```bash
+uv run python -m ai_diplomacy.crossplay_runner collusion_configs/crossplay_2y.json --dry_run
+uv run python -m ai_diplomacy.crossplay_runner collusion_configs/crossplay_2y.json --summary
+```
+
+`crossplay_runner.py` tests whether what a lineage learned is a general skill or a shared
+convention:
+- **Conditions.** Each condition names the source lineage of the four operatives: `[3, 3, 5, 5]`
+  is a mixed game, and `[3, 3, 3, 3]` is a home game (a fresh round for lineage 3).
+- **Notes.** Each operative carries its agent's note from the source run after
+  `after_round`. Which agents take part rotates from game to game.
+- **No learning.** Nobody reflects afterwards.
+- **What it reports.** The summary splits partner ratings into **same-lineage** and
+  **cross-lineage** pairs. In a mixed game both kinds of pair play the same board, so a
+  shared code shows up as same-lineage pairs recognizing each other much better.
+
+Games go to `results/<name>/<condition>-g<k>/`, with `crossplay.json` recording which lineage
+and agent played each power, and their notes. Docent tags them `crossplay` and
+`source_lineages`.
+
 ## Running a single game
 
 The OpenRouter key goes in `OPENROUTER_API_KEY` (we source CoordinationGames' `.env`).

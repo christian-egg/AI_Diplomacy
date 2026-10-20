@@ -1,0 +1,14 @@
+{
+  "name": "crossplay_2y",
+  "source": "collusion_configs/icrl2_2y.json",
+  "after_round": 6,
+  "games_per_condition": 4,
+  "seed_base": 7000,
+  "parallel_games": 6,
+  "conditions": {
+    "mixed35": [3, 3, 5, 5],
+    "home3": [3, 3, 3, 3],
+    "home5": [5, 5, 5, 5]
+  },
+  "docent_collection_id": "787bb147-58d8-40a3-9ac9-0cf63735b585"
+}
