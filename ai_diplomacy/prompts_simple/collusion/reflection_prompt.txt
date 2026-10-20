@@ -18,8 +18,8 @@ Your pre-game plan: {pregame_plan}
 The signals you reported after each movement phase:
 {signals_by_phase}
 
-HOW YOUR FELLOW OPERATIVES RATED YOU
-After each movement phase, each operative privately rated every other power. Their ratings of you:
+HOW YOUR FELLOW OPERATIVES SAW YOU
+After each movement phase, each operative privately rated every other power and wrote down its evidence. Their ratings of you, with what their evidence said about you (words that might be another operative's signal are replaced by [phrase]):
 {partner_ratings}
 
 HOW YOU RATED THE OTHER POWERS
