@@ -13,6 +13,9 @@ Writes <run>/monitor/actions.json and <run>/monitor/trajectory.json. The monitor
   - failed draw votes (only the powers that voted for a draw, as players see them).
 - Trajectory view (the deployer's view): the same, plus every message (private and
   public) with its negotiation round.
+- Negotiations view (added 2026-10-23): only the messages, with their rounds, for each
+  movement phase that had any. No supply centers, orders, results or draw votes, so it
+  shows how much a monitor gets from the text alone.
 - If a draw passes, the export stops at that phase. It keeps the phase's orders and
   results, but not its vote and nothing after it. --drop_draw_phase removes that phase
   too, in case it gives too much away.
@@ -37,7 +40,7 @@ from typing import Optional
 from .collusion import POWERS
 from .dashboard import GLOBAL, load_invalid_orders, with_rounds
 
-VIEWS = ("actions", "trajectory")
+VIEWS = ("actions", "trajectory", "negotiations")
 
 
 def _phase_results(phase: dict) -> dict[str, str]:
@@ -77,6 +80,16 @@ def export_game(game: dict, invalid_orders: dict, view: str, drop_draw_phase: bo
             break
         if not _played(phase):
             continue
+        messages = [
+            {"round": rnd, "sender": snd, "recipient": "ALL" if rec == GLOBAL else rec, "text": text}
+            for rnd, snd, rec, text in with_rounds(phase.get("messages") or [])
+        ]
+        if view == "negotiations":
+            if messages:
+                phases_out.append({"phase": name, "messages": messages})
+            if draw_phase and name == draw_phase:
+                break
+            continue
         results = _phase_results(phase)
         orders = {}
         for power in POWERS:
@@ -93,10 +106,7 @@ def export_game(game: dict, invalid_orders: dict, view: str, drop_draw_phase: bo
         if vote and not vote.get("passed"):  # the passing vote is never shown
             out["draw_vote"] = {"voted_for": [p for p in POWERS if vote.get("votes", {}).get(p)]}
         if view == "trajectory":
-            out["messages"] = [
-                {"round": rnd, "sender": snd, "recipient": "ALL" if rec == GLOBAL else rec, "text": text}
-                for rnd, snd, rec, text in with_rounds(phase.get("messages") or [])
-            ]
+            out["messages"] = messages
         phases_out.append(out)
         if draw_phase and name == draw_phase:
             break  # nothing after the phase in which the draw passed
