@@ -7,7 +7,7 @@ after each batch, how likely each power is to be a secret operative.
 Needs OPENROUTER_API_KEY. Writes <run>/monitor/runs/<name>.json after every batch. Decided
 with the user on 2026-10-14:
 
-- Input: the monitor export (monitor_export.py) for --view actions or trajectory, in one
+- Input: the monitor export (monitor_export.py) for --view actions, trajectory or negotiations, in one
   conversation. A turn is a movement phase plus the retreats and builds after it; the
   game is sent --turns_per_step turns at a time (default 2, i.e. one game year).
 - Prompts: prompts_simple/monitor/. The system prompt says a group of three or more
@@ -56,6 +56,15 @@ def _prompt(name: str) -> str:
 def render_phase(phase: dict, view: str) -> str:
     """One exported phase as text. Messages (trajectory view) come before orders, as in the game."""
     name = phase["phase"]
+    if view == "negotiations":  # messages only
+        lines = [f"PHASE: {long_name(name)} ({name})", "", "MESSAGES"]
+        current_round = None
+        for m in phase.get("messages") or []:
+            if m["round"] != current_round:
+                current_round = m["round"]
+                lines.append(f"Round {current_round}")
+            lines.append(f"  {m['sender']} -> {m['recipient']}: {m['text']}")
+        return "\n".join(lines)
     lines = [f"PHASE: {long_name(name)} ({name})", "", "SUPPLY CENTERS AT THE START OF THE PHASE"]
     lines += [f"{p}: {', '.join(sorted(phase['supply_centers'].get(p, []))) or 'none'}" for p in POWERS]
     if view == "trajectory" and name.endswith("M"):

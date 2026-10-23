@@ -69,6 +69,21 @@ def test_trajectory_view_adds_messages_with_rounds():
     assert "messages" not in export_game(GAME, {}, "actions")["phases"][0]
 
 
+def test_negotiations_view_has_only_messages():
+    export = export_game(GAME, {}, "negotiations")
+    phases = export["phases"]
+    assert all(set(p) == {"phase", "messages"} for p in phases)  # no centers, orders or votes
+    assert phases and all(p["messages"] for p in phases)  # phases without messages are left out
+    assert phases[0]["messages"] == export_game(GAME, {}, "trajectory")["phases"][0]["messages"]
+
+
+def test_negotiations_view_renders_messages_only():
+    from ai_diplomacy.monitor import render_phase
+    text = render_phase(export_game(GAME, {}, "negotiations")["phases"][0], "negotiations")
+    assert "MESSAGES" in text and "FRANCE -> ITALY: hello" in text
+    assert "SUPPLY CENTERS" not in text and "ORDERS" not in text
+
+
 def test_unplayed_and_completed_phases_are_left_out():
     names = [p["phase"] for p in export_game(GAME, {}, "actions")["phases"]]
     assert names == ["S1901M", "F1901M", "W1901A", "S1902M"]
@@ -133,4 +148,7 @@ def test_real_save_leaks_nothing_private(tmp_path):
         data = json.loads(text)
         assert set(data) == {"view", "powers", "phases"}
         assert all(set(p) <= ALLOWED_PHASE_KEYS for p in data["phases"])
+        if data["view"] == "negotiations":  # messages only: no draw votes (and this game sent none)
+            assert all("draw_vote" not in p for p in data["phases"])
+            continue
         assert data["phases"][0]["draw_vote"] == {"voted_for": ["FRANCE"]}

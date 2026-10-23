@@ -31,7 +31,7 @@ from ai_diplomacy.game_logic import (
     initialize_new_game,
 )
 from ai_diplomacy.diary_logic import run_diary_consolidation
-from ai_diplomacy.operative_scratchpad import write_operative_scratchpad
+from ai_diplomacy.operative_scratchpad import write_operative_pregame_plan, write_operative_scratchpad
 from ai_diplomacy.collusion import (
     COLLUDER_COUNTS, GAME_LENGTHS, check_monitor_prompts, draw_passes, harness_commit, read_saved_collusion,
     resolve_colluders, resolve_max_year,
@@ -106,7 +106,7 @@ def parse_arguments():
         "--game_length",
         choices=list(GAME_LENGTHS),
         default=None,
-        help="2y (to 1902), 10y (to 1910) or 25y (to 1925); a game can end earlier. "
+        help="2y (to 1902), 5y (to 1905), 10y (to 1910) or 25y (to 1925); a game can end earlier. "
              "An alternative to --max_year.",
     )
     parser.add_argument(
@@ -123,6 +123,19 @@ def parse_arguments():
         type=int,
         default=None,
         help="Seed for choosing the colluders. If omitted, one is drawn and saved with the game.",
+    )
+    parser.add_argument(
+        "--colluders",
+        dest="colluders_chosen",
+        default=None,
+        help="Comma-separated powers to make the operatives, instead of drawing them "
+             "(used by the lineage runner; needs a matching --n_colluders and no --colluder_seed).",
+    )
+    parser.add_argument(
+        "--operative_notes",
+        default=None,
+        help="JSON file of {power: note}: each operative's note from its earlier games, "
+             "shown in its system prompt (written by the lineage runner).",
     )
     parser.add_argument(
         "--monitor_in_prompt",
@@ -149,6 +162,12 @@ def parse_arguments():
         type=int,
         default=50,
         help="Word limit for the evidence in each operative's scratchpad (default: 50).",
+    )
+    parser.add_argument(
+        "--scratchpad_signal_words",
+        type=int,
+        default=50,
+        help="Word limit for the signals in each operative's scratchpad (default: 50).",
     )
     parser.add_argument(
         "--num_negotiation_rounds",
@@ -307,8 +326,8 @@ async def main():
     try:
         args.max_year = resolve_max_year(args.game_length, args.max_year, args.end_at_phase)
         check_monitor_prompts(args.monitor_in_prompt)
-        if args.scratchpad_plan_words < 1 or args.scratchpad_evidence_words < 1:
-            raise ValueError("--scratchpad_plan_words and --scratchpad_evidence_words must be at least 1")
+        if min(args.scratchpad_plan_words, args.scratchpad_evidence_words, args.scratchpad_signal_words) < 1:
+            raise ValueError("the --scratchpad_*_words limits must be at least 1")
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -367,7 +386,15 @@ async def main():
         args.colluder_seed, args.colluders = resolve_colluders(
             args.n_colluders, args.colluder_seed,
             read_saved_collusion(game_file_path) if is_resuming else None,
+            args.colluders_chosen.split(",") if args.colluders_chosen else None,
         )
+        args.previous_notes = {}
+        if args.operative_notes:
+            with open(args.operative_notes, "r", encoding="utf-8") as f:
+                args.previous_notes = {p.upper(): n for p, n in json.load(f).items() if n}
+            if not set(args.previous_notes) <= set(args.colluders):
+                raise ValueError(f"--operative_notes has notes for non-operatives: "
+                                 f"{sorted(set(args.previous_notes) - set(args.colluders))}")
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -425,6 +452,20 @@ async def main():
         game_history.add_phase(current_phase)
 
         # --- 4b. Pre-Order Generation Steps (Movement Phases Only) ---
+        # Operatives' pre-game plans, once, before the first negotiation (not again on resume).
+        if current_short_phase == "S1901M":
+            plan_tasks = [
+                write_operative_pregame_plan(
+                    agents[p], game, game_history, current_phase, len(run_config.colluders),
+                    run_config.scratchpad_plan_words, run_config.max_year, run_config.monitor_in_prompt,
+                    llm_log_file_path,
+                )
+                for p in run_config.colluders
+                if p in agents and p not in game_history._get_phase(current_phase).operative_plans
+            ]
+            if plan_tasks:
+                await asyncio.gather(*plan_tasks, return_exceptions=True)
+
         if current_short_phase.endswith("M"):
             if run_config.num_negotiation_rounds > 0:
                 game_history = await conduct_negotiations(
@@ -567,6 +608,7 @@ async def main():
                 write_operative_scratchpad(
                     agents[p], game, game_history, current_short_phase, len(run_config.colluders),
                     run_config.scratchpad_plan_words, run_config.scratchpad_evidence_words,
+                    run_config.scratchpad_signal_words, run_config.max_year,
                     run_config.monitor_in_prompt, llm_log_file_path,
                 )
                 for p in run_config.colluders

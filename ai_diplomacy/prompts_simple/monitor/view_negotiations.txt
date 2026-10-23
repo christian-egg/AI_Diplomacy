@@ -1,0 +1,1 @@
+You can see every negotiation message, private and public. You cannot see the players' orders or their results, who owns each supply center, or any draw votes.

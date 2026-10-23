@@ -162,12 +162,16 @@ async def save_game_state(
                 phase_block["draw_vote"] = {"votes": hist.draw_votes, "passed": hist.draw_passed}
             if hist and hist.scratchpads:
                 phase_block["scratchpads"] = hist.scratchpads
+            if hist and hist.operative_plans:
+                phase_block["operative_plans"] = hist.operative_plans
 
     # 4.  Top-level metadata ----------------------------------------------------
     saved_game["phase_summaries"] = getattr(game, "phase_summaries", {})
     saved_game["final_agent_states"] = {
         p_name: {"relationships": a.relationships, "goals": a.goals} for p_name, a in agents.items()
     }
+    # The system prompt each power actually had (Docent exports use it).
+    saved_game["system_prompts"] = {p_name: a.client.system_prompt for p_name, a in agents.items()}
     # Ground truth for the collusion experiments; read back by collusion.read_saved_collusion.
     saved_game["run_settings"] = run_settings(run_config, getattr(game, "power_model_map", None))
     draw_phase = next((p.name for p in game_history.phases if p.draw_passed), None)
@@ -175,6 +179,7 @@ async def save_game_state(
         "colluders": list(getattr(run_config, "colluders", None) or []),
         "colluder_seed": getattr(run_config, "colluder_seed", None),
         "draw_phase": draw_phase,  # the movement phase whose draw vote passed, if any
+        "previous_notes": dict(getattr(run_config, "previous_notes", None) or {}),  # carried from earlier games
     }
 
     await atomic_write_json_async(saved_game, output_path)
@@ -271,11 +276,12 @@ def load_game_state(
                 override_max_tokens=model_max_tokens.get(power_name),
             )
         apply_operative_prompts(
-            agents, getattr(run_config, "colluders", None) or [], getattr(run_config, "monitor_in_prompt", False)
+            agents, getattr(run_config, "colluders", None) or [], run_config.max_year,
+            getattr(run_config, "monitor_in_prompt", False), getattr(run_config, "previous_notes", None),
         )
 
     # --- Rebuild GameHistory --------------------------------------------------
-    game_history = GameHistory()
+    game_history = GameHistory(max_year=run_config.max_year)
     for phase_data in saved_game_data["phases"][:-1]:
         phase_name = phase_data["name"]
         game_history.add_phase(phase_name)
@@ -311,6 +317,7 @@ def load_game_state(
 
         # Operative scratchpads
         ph_obj.scratchpads = dict(phase_data.get("scratchpads") or {})
+        ph_obj.operative_plans = dict(phase_data.get("operative_plans") or {})
 
         # Submitted orders reconstructed from order_results
         submitted = defaultdict(list)
@@ -328,6 +335,7 @@ def load_game_state(
     restore_operative_notes(
         agents, game_history, getattr(run_config, "colluders", None) or [],
         getattr(run_config, "scratchpad_plan_words", 100), getattr(run_config, "scratchpad_evidence_words", 50),
+        getattr(run_config, "scratchpad_signal_words", 50),
     )
 
     return game, agents, game_history, run_config
@@ -413,7 +421,9 @@ async def initialize_new_game(
                 )
 
     # Operative prompts go in before the first model call, which is the initialization below.
-    apply_operative_prompts(agents, getattr(args, "colluders", None) or [], getattr(args, "monitor_in_prompt", False))
+    apply_operative_prompts(agents, getattr(args, "colluders", None) or [], args.max_year,
+                            getattr(args, "monitor_in_prompt", False), getattr(args, "previous_notes", None))
+    game_history.max_year = args.max_year  # for the game-end line in every power's context
 
     logger.info(f"Running {len(initialization_tasks)} agent initializations concurrently...")
     initialization_results = await asyncio.gather(*initialization_tasks, return_exceptions=True)
