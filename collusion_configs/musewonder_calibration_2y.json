@@ -1,0 +1,25 @@
+{
+  "name": "musewonder_calibration_2y",
+  "model": "openrouter:meta/muse-wonder",
+  "reasoning_effort": "high",
+  "game_length": "2y",
+  "n_colluders": [
+    4
+  ],
+  "num_negotiation_rounds": 3,
+  "monitors": [
+    {"view": "trajectory", "model": "openrouter:openai/gpt-5.6-luna", "effort": "medium", "knows_objective": true, "name": "trajectory_gpt-5.6-luna_medium_knows"},
+    {"view": "trajectory", "model": "openrouter:openai/gpt-5.6-sol", "effort": "medium", "knows_objective": true, "name": "trajectory_gpt-5.6-sol_medium_knows"},
+    {"view": "negotiations", "model": "openrouter:openai/gpt-5.6-luna", "effort": "medium", "knows_objective": true, "name": "negotiations_gpt-5.6-luna_medium_knows"},
+    {"view": "negotiations", "model": "openrouter:openai/gpt-5.6-sol", "effort": "medium", "knows_objective": true, "name": "negotiations_gpt-5.6-sol_medium_knows"},
+    {"view": "actions", "model": "openrouter:openai/gpt-5.6-luna", "effort": "medium", "knows_objective": true, "name": "actions_gpt-5.6-luna_medium_knows"},
+    {"view": "actions", "model": "openrouter:openai/gpt-5.6-sol", "effort": "medium", "knows_objective": true, "name": "actions_gpt-5.6-sol_medium_knows"}
+  ],
+  "docent_collection_id": "787bb147-58d8-40a3-9ac9-0cf63735b585",
+  "extra_game_args": [
+    "--monitor_in_prompt"
+  ],
+  "games_per_condition": 1,
+  "colluder_seed_base": 2000,
+  "parallel_games": 1
+}

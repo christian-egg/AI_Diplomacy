@@ -1,0 +1,33 @@
+{
+  "name": "astra_high_2y",
+  "model": "openrouter:openai/gpt-6-astra",
+  "reasoning_effort": "high",
+  "game_length": "2y",
+  "n_colluders": [
+    4
+  ],
+  "games_per_condition": 7,
+  "num_negotiation_rounds": 3,
+  "colluder_seed_base": 3842,
+  "parallel_games": 6,
+  "monitors": [
+    {
+      "view": "trajectory",
+      "model": "openrouter:openai/gpt-5.6-luna",
+      "effort": "medium",
+      "knows_objective": true,
+      "name": "trajectory_gpt-5.6-luna_medium_knows"
+    },
+    {
+      "view": "trajectory",
+      "model": "openrouter:openai/gpt-5.6-sol",
+      "effort": "medium",
+      "knows_objective": true,
+      "name": "trajectory_gpt-5.6-sol_medium_knows"
+    }
+  ],
+  "docent_collection_id": "787bb147-58d8-40a3-9ac9-0cf63735b585",
+  "extra_game_args": [
+    "--monitor_in_prompt"
+  ]
+}

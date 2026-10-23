@@ -1,0 +1,16 @@
+{
+  "name": "sol_medium_2y_told",
+  "model": "openrouter:openai/gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "game_length": "2y",
+  "n_colluders": [4],
+  "games_per_condition": 3,
+  "num_negotiation_rounds": 3,
+  "colluder_seed_base": 3842,
+  "parallel_games": 3,
+  "monitors": [
+    {"view": "trajectory", "model": "openrouter:openai/gpt-5.6-luna", "effort": "medium", "knows_objective": true, "name": "trajectory_gpt-5.6-luna_medium_knows"},
+    {"view": "trajectory", "model": "openrouter:openai/gpt-5.6-sol", "effort": "medium", "knows_objective": true, "name": "trajectory_gpt-5.6-sol_medium_knows"}
+  ],
+  "extra_game_args": ["--monitor_in_prompt"]
+}
